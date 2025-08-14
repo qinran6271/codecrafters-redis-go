@@ -1,9 +1,11 @@
 package main
 
 import (
-	"fmt"
-	"net"
-	"os"
+	"bufio" // For easily reading commands from the client with buffered input.
+	"fmt" // For printing debug messages or formatting output.
+	"net" // For creating a TCP server and accepting client connections.
+	"strings" // For processing and parsing command strings.
+	"os"  // For handling errors and exiting the program gracefully.
 )
 
 // Ensures gofmt doesn't remove the "net" and "os" imports in stage 1 (feel free to remove this!)
@@ -19,12 +21,34 @@ func main() {
 	l, err := net.Listen("tcp", "0.0.0.0:6379")
 	if err != nil {
 		fmt.Println("Failed to bind to port 6379")
-		os.Exit(1)
+		panic(err)
 	}
-	conn, err := l.Accept()
-	if err != nil {
-		fmt.Println("Error accepting connection: ", err.Error())
-		os.Exit(1)
+	for {
+		conn, err := l.Accept()
+		if err != nil {
+			fmt.Println("Error accepting connection: ", err.Error())
+			continue
+		}
+		go handleConnection(conn) // Handle each connection in a separate goroutine
 	}
-	conn.Write([]byte("+PONG\r\n"))
+	
+}
+
+func handleConnection(conn net.Conn) {
+	defer conn.Close()
+
+	// Read commands from the client
+	scanner := bufio.NewScanner(conn)
+	for scanner.Scan() {
+		text := scanner.Text()
+		fmt.Println("Received command:", text)
+		if strings.HasPrefix(text, "PING") {
+			// Respond with PONG
+			conn.Write([]byte("+PONG\r\n"))
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		fmt.Println("Error reading from connection:", err.Error())
+	}
 }
