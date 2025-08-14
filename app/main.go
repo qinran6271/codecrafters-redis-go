@@ -53,19 +53,18 @@ func handleConnection(conn net.Conn) {
 		switch strings.ToUpper(args[0]) {
 		case "PING":
 			if len(args) == 1 {
-				conn.Write([]byte("+PONG\r\n")) // Respond with PONG if no argument is given
+				fmt.Fprint(conn, "+PONG\r\n") // Respond with PONG if no argument is given
 			} else {
-				conn.Write([]byte(fmt.Sprintf("+%s\r\n", args[1]))) // Echo the argument back
+				fmt.Fprintf(conn, "+%s\r\n", args[1]) // Echo the argument back
 			}
 		case "ECHO":
 			if len(args) < 2 {
 				conn.Write([]byte("-ERR wrong number of arguments for 'echo' command\r\n"))
 			} else {
-				conn.Write([]byte(fmt.Sprintf("$%d\r\n%s\r\n", len(args[1]), args[1]))) // RESP Bulk String format
+				fmt.Fprintf(conn, "$%d\r\n%s\r\n", len(args[1]), args[1]) // RESP Bulk String format
 			}
 		default:
-			conn.Write([]byte("-ERR unknown command '" + args[0] + "'\r\n"))
-
+			fmt.Fprintf(conn, "-ERR unknown command '%s'\r\n", args[0])
 		}
 
 	}
