@@ -38,17 +38,37 @@ func handleConnection(conn net.Conn) {
 	defer conn.Close()
 
 	// Read commands from the client
-	scanner := bufio.NewScanner(conn)
-	for scanner.Scan() {
-		text := scanner.Text()
-		fmt.Println("Received command:", text)
-		if strings.HasPrefix(text, "PING") {
-			// Respond with PONG
-			conn.Write([]byte("+PONG\r\n"))
+	r := bufio.NewReader(conn)
+	for {
+		args, err := readArray(r)
+		if err != nil {
+			fmt.Println("Error reading command:", err.Error())
+			return
 		}
+
+		if len(args) == 0 { 
+			fmt.Println("Received empty command, skipping...")
+			continue  // Skip empty commands
+		} 
+		switch strings.ToUpper(args[0]) {
+		case "PING":
+			if len(args) == 1 {
+				conn.Write([]byte("+PONG\r\n")) // Respond with PONG if no argument is given
+			} else {
+				conn.Write([]byte(fmt.Sprintf("+%s\r\n", args[1]))) // Echo the argument back
+			}
+		case "ECHO":
+			if len(args) < 2 {
+				conn.Write([]byte("-ERR wrong number of arguments for 'echo' command\r\n"))
+			} else {
+				conn.Write([]byte(fmt.Sprintf("$%d\r\n%s\r\n", len(args[1]), args[1]))) // RESP Bulk String format
+			}
+		default:
+			conn.Write([]byte("-ERR unknown command '" + args[0] + "'\r\n"))
+
+		}
+
 	}
 
-	if err := scanner.Err(); err != nil {
-		fmt.Println("Error reading from connection:", err.Error())
-	}
 }
+
