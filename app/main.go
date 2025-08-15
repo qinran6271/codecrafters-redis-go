@@ -41,9 +41,13 @@ func handleConnection(conn net.Conn) {
 	r := bufio.NewReader(conn)
 	for {
 		args, err := readArray(r)
-		
+
 		if err != nil {
-			fmt.Println("Error reading command:", err.Error())
+			// if err.Error() == "EOF" {
+			// 	fmt.Println("Client disconnected")
+			// 	return // Exit the loop if the client disconnects
+			// }
+			writeError(conn, fmt.Sprintf("error reading command: %v", err))
 			return
 		}
 		if len(args) == 0 { 
