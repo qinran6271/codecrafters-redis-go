@@ -6,6 +6,7 @@ import (
     "io"
     "strconv"
     "strings"
+    "net"
 )
 
 // 读取一行，去掉结尾的 CRLF
@@ -62,6 +63,21 @@ func readArray(r *bufio.Reader) ([]string, error) {
 		args = append(args, s)
 	}
 	return args, nil
+}
+
+// Simple RESP String：+<payload>\r\n
+func writeSimple(conn net.Conn, s string) {
+    fmt.Fprintf(conn, "+%s\r\n", s)
+}
+
+// Bulk RESP String：$<len>\r\n<payload>\r\n
+func writeBulk(conn net.Conn, s string) {
+    fmt.Fprintf(conn, "$%d\r\n%s\r\n", len(s), s)
+}
+
+// Error RESP String：-<error message>\r\n
+func writeError(conn net.Conn, errMsg string) {
+    fmt.Fprintf(conn, "-%s\r\n", errMsg)
 }
 
 

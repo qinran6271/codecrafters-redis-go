@@ -41,30 +41,20 @@ func handleConnection(conn net.Conn) {
 	r := bufio.NewReader(conn)
 	for {
 		args, err := readArray(r)
+		
 		if err != nil {
 			fmt.Println("Error reading command:", err.Error())
 			return
 		}
-
 		if len(args) == 0 { 
 			fmt.Println("Received empty command, skipping...")
 			continue  // Skip empty commands
 		} 
-		switch strings.ToUpper(args[0]) {
-		case "PING":
-			if len(args) == 1 {
-				fmt.Fprint(conn, "+PONG\r\n") // Respond with PONG if no argument is given
-			} else {
-				fmt.Fprintf(conn, "+%s\r\n", args[1]) // Echo the argument back
-			}
-		case "ECHO":
-			if len(args) < 2 {
-				conn.Write([]byte("-ERR wrong number of arguments for 'echo' command\r\n"))
-			} else {
-				fmt.Fprintf(conn, "$%d\r\n%s\r\n", len(args[1]), args[1]) // RESP Bulk String format
-			}
-		default:
-			fmt.Fprintf(conn, "-ERR unknown command '%s'\r\n", args[0])
+		
+		if cmd, ok := routs[strings.ToUpper(args[0])]; ok {
+			cmd(conn, args) // Call the command handler
+		} else {
+			writeError(conn, fmt.Sprintf("unknown command '%s'", args[0]))
 		}
 
 	}
