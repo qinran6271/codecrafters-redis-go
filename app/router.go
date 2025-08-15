@@ -7,4 +7,6 @@ import (
 var routs = map[string]func(net.Conn, []string){
 	"PING": cmdPING,
 	"ECHO": cmdECHO,
+	"SET":  cmdSET,
+	"GET":  cmdGET,
 }

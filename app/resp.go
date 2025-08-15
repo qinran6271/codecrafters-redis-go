@@ -80,4 +80,9 @@ func writeError(conn net.Conn, errMsg string) {
     fmt.Fprintf(conn, "-%s\r\n", errMsg)
 }
 
+// Null Bulk RESP String：$-1\r\n
+func writeNullBulk(conn net.Conn) {
+    conn.Write([]byte("$-1\r\n"))
+}
+
 
