@@ -69,3 +69,23 @@ func cmdGET(conn net.Conn, args []string) {
 		writeNullBulk(conn) // RESP Null Bulk String for non-existing key
 	}		
 }
+
+func cmdRPUSH(conn net.Conn, args []string) {
+	if len(args) < 3 {
+		writeError(conn, "wrong number of arguments for 'rpush' command")
+		return
+	}
+	key := args[1]
+	values := args[2:]
+
+	newLen, err := rpushKey(key, values)
+	if err != nil {
+		if err == ErrWrongType {
+			writeError(conn, err.Error())
+			return
+		}
+		writeError(conn, "internal error")
+		return
+	}
+	writeInteger(conn, int64(newLen))
+}

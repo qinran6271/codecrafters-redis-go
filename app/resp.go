@@ -85,4 +85,8 @@ func writeNullBulk(conn net.Conn) {
     conn.Write([]byte("$-1\r\n"))
 }
 
+// Integer RESP String：:<number>\r\n
+func writeInteger(conn net.Conn, n int64) {
+    fmt.Fprintf(conn, ":%d\r\n", n)
+}
 
