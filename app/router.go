@@ -10,4 +10,5 @@ var routs = map[string]func(net.Conn, []string){
 	"SET":  cmdSET,
 	"GET":  cmdGET,
 	"RPUSH": cmdRPUSH,
+	"LRANGE": cmdLRANGE,
 }

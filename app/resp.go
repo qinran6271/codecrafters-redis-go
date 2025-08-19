@@ -90,3 +90,7 @@ func writeInteger(conn net.Conn, n int64) {
     fmt.Fprintf(conn, ":%d\r\n", n)
 }
 
+// Bulk RESP String with length: $<len>\r\n<payload>\r\n
+func writeBulkString(conn net.Conn, s string) {
+    fmt.Fprintf(conn, "$%d\r\n%s\r\n", len(s), s)
+}

@@ -89,3 +89,34 @@ func cmdRPUSH(conn net.Conn, args []string) {
 	}
 	writeInteger(conn, int64(newLen))
 }
+
+func cmdLRANGE(conn net.Conn, args []string) {
+	if len(args) < 4 {
+		writeError(conn, "wrong number of arguments for 'lrange' command")
+		return
+	}
+	key := args[1]
+	
+	start, err1 := strconv.Atoi(args[2])
+	end, err2 := strconv.Atoi(args[3])
+	if err1 != nil || err2 != nil {
+		writeError(conn, "invalid start index for 'lrange' command")
+		return
+	}
+
+	items, err := lrangeKey(key, start, end)
+	if err != nil {
+		if err == ErrWrongType {
+			writeError(conn, err.Error())
+			return
+		} else {
+			writeError(conn, "internal error")
+		}
+		return
+	}
+
+	fmt.Fprintf(conn, "*%d\r\n", len(items)) // RESP Array with length
+	for _, item := range items {
+		writeBulkString(conn, item) // Write each item as a RESP Bulk String
+	}
+}
