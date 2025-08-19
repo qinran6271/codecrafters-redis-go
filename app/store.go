@@ -189,3 +189,22 @@ func lpushKey(key string, values []string) (int, error) {
 	kv.m[key] = e // Update the entry in the map
 	return len(e.l), nil // Return the new length of the list
 }
+
+func llenKey(key string) (int, error) {
+	now := time.Now()
+	kv.Lock()
+	defer kv.Unlock()
+
+	e, exists := kv.m[key]
+	if !exists {
+		return 0, nil // Return 0 and nil if key does not exist
+	}
+	if isExpired(e, now) {
+		delete(kv.m, key) // Remove expired key
+		return 0, nil // Return 0 and nil if key is expired
+	}
+	if e.kind != kindList {
+		return 0, ErrWrongType // Return 0 and error if the value is not a list
+	}
+	return len(e.l), nil // Return the length of the list
+}

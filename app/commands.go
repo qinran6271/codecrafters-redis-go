@@ -140,3 +140,25 @@ func cmdLPUSH(conn net.Conn, args []string) {
 	}
 	writeInteger(conn, int64(newLen))
 }
+
+func cmdLLEN(conn net.Conn, args []string) {
+	if len(args) != 2 {
+		writeError(conn, "wrong number of arguments for 'llen' command")
+		return
+	}
+	
+	key := args[1]
+
+	length, err := llenKey(key)
+	if err != nil {
+		if err == ErrWrongType {
+			writeError(conn, err.Error())
+			
+		} else {
+			writeError(conn, "internal error")// RESP Null Bulk String for non-existing key
+		}
+		return
+	}
+
+	writeInteger(conn, int64(length)) // Return the length of the list
+}
