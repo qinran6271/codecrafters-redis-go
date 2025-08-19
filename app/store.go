@@ -149,3 +149,43 @@ func lrangeKey(key string, start int, end int) ([]string, error) {
 
 	return e.l[start:end+1], nil// Return the sub-slice from start to end (inclusive)
 }
+
+func lpushKey(key string, values []string) (int, error) {
+	now := time.Now()
+	kv.Lock()
+	defer kv.Unlock()
+
+	e, exists := kv.m[key]
+	if exists {
+		if isExpired(e, now) {
+			delete(kv.m, key) // Remove expired key
+			exists = false
+		}
+	}
+
+	rev := make([]string, 0, len(values))
+	for i := len(values) - 1; i >= 0; i-- {
+		rev = append(rev, values[i]) // Reverse order for LPUSH
+	}
+
+	if !exists {	
+		kv.m[key] = entry{
+			kind: kindList,
+			l: rev,
+			// No expiration for the new list
+		}
+		return len(rev), nil
+	}
+
+	if e.kind != kindList {
+		return 0, ErrWrongType // Return error if the existing value is not a list
+	}
+
+	newList := make([]string, 0, len(rev)+len(e.l))
+	newList = append(newList, rev...)
+	newList = append(newList, e.l...)
+
+	e.l = newList // Update the list with the new values
+	kv.m[key] = e // Update the entry in the map
+	return len(e.l), nil // Return the new length of the list
+}

@@ -120,3 +120,23 @@ func cmdLRANGE(conn net.Conn, args []string) {
 		writeBulkString(conn, item) // Write each item as a RESP Bulk String
 	}
 }
+
+func cmdLPUSH(conn net.Conn, args []string) {
+	if len(args) < 3 {
+		writeError(conn, "wrong number of arguments for 'lpush' command")
+		return
+	}
+	key := args[1]
+	values := args[2:]
+
+	newLen, err := lpushKey(key, values)
+	if err != nil {
+		if err == ErrWrongType {
+			writeError(conn, err.Error())
+		} else {
+			writeError(conn, "internal error")
+		}
+		return
+	}
+	writeInteger(conn, int64(newLen))
+}
