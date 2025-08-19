@@ -162,3 +162,28 @@ func cmdLLEN(conn net.Conn, args []string) {
 
 	writeInteger(conn, int64(length)) // Return the length of the list
 }
+
+func cmdLPOP(conn net.Conn, args []string) {
+	if len(args) != 2 {
+		writeError(conn, "wrong number of arguments for 'lpop' command")
+		return
+	}
+	
+	key := args[1]
+
+	value, err := lpopKey(key)
+	if err != nil {
+		if err == ErrWrongType {
+			writeError(conn, err.Error())
+		} else {
+			writeError(conn, "internal error")
+		}
+		return
+	}
+
+	if value == "" {
+		writeNullBulk(conn) // RESP Null Bulk String for non-existing key
+	} else {
+		writeBulk(conn, value) // Return the popped value as a RESP Bulk String
+	}
+}

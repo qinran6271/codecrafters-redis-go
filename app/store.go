@@ -208,3 +208,36 @@ func llenKey(key string) (int, error) {
 	}
 	return len(e.l), nil // Return the length of the list
 }
+
+func lpopKey(key string) (string, error) {
+	now := time.Now()
+	kv.Lock()
+	defer kv.Unlock()
+
+	e, exists := kv.m[key]
+	if !exists {
+		return "", nil // Return nil if key does not exist
+	}
+	if isExpired(e, now) {
+		delete(kv.m, key) // Remove expired key
+		return "", nil // Return nil if key is expired
+	}
+	if e.kind != kindList {
+		return "", ErrWrongType // Return error if the value is not a list
+	}
+	if len(e.l) == 0 {
+		return "", nil // Return nil if the list is empty
+	}
+
+	// Pop the first element from the list
+	value := e.l[0]
+	e.l = e.l[1:] // Update the list by removing the first element
+	if len(e.l) == 0 {
+		delete(kv.m, key) // Remove the key if the list is now empty
+	} else {
+		kv.m[key] = e // Update the entry in the map
+	}
+	return value, nil // Return the popped value
+
+	
+}
