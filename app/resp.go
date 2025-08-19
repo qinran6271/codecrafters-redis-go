@@ -94,3 +94,9 @@ func writeInteger(conn net.Conn, n int64) {
 func writeBulkString(conn net.Conn, s string) {
     fmt.Fprintf(conn, "$%d\r\n%s\r\n", len(s), s)
 }
+
+// RESP Array header: *<n>\r\n
+func writeArrayHeader(conn net.Conn, n int) {
+    fmt.Fprintf(conn, "*%d\r\n", n)
+}
+

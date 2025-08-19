@@ -209,35 +209,38 @@ func llenKey(key string) (int, error) {
 	return len(e.l), nil // Return the length of the list
 }
 
-func lpopKey(key string) (string, error) {
+func lpopKey(key string, count int) ([]string, error) {
 	now := time.Now()
 	kv.Lock()
 	defer kv.Unlock()
 
 	e, exists := kv.m[key]
 	if !exists {
-		return "", nil // Return nil if key does not exist
+		return []string{}, nil // Return nil if key does not exist
 	}
 	if isExpired(e, now) {
 		delete(kv.m, key) // Remove expired key
-		return "", nil // Return nil if key is expired
+		return []string{}, nil // Return nil if key is expired
 	}
 	if e.kind != kindList {
-		return "", ErrWrongType // Return error if the value is not a list
+		return []string{}, ErrWrongType // Return error if the value is not a list
 	}
-	if len(e.l) == 0 {
-		return "", nil // Return nil if the list is empty
+
+	n := len(e.l)
+	if n == 0 {
+		return []string{}, nil // Return nil if the list is empty
+	}
+
+	if count >= n {
+		res := e.l
+		delete(kv.m, key) // If count is greater than or equal to the list length, return the whole list
+		return res, nil
 	}
 
 	// Pop the first element from the list
-	value := e.l[0]
-	e.l = e.l[1:] // Update the list by removing the first element
-	if len(e.l) == 0 {
-		delete(kv.m, key) // Remove the key if the list is now empty
-	} else {
-		kv.m[key] = e // Update the entry in the map
-	}
-	return value, nil // Return the popped value
-
+	res := e.l[:count] // Get the first 'count' elements
+	e.l = e.l[count:] // Update the list by removing the popped elements
+	kv.m[key] = e // Update the entry in the map
+	return res, nil // Return the popped elements
 	
 }
