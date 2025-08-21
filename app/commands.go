@@ -274,3 +274,40 @@ func cmdBLPOP(conn net.Conn, args []string) {
 		writeNullBulk(conn) // RESP Null Bulk String for timeout
 	}
 }
+
+// **********************Stream commands***********************
+func cmdTYPE(conn net.Conn, args []string) {
+	if len(args) != 2 {
+		writeError(conn, "wrong number of arguments for 'type' command")
+		return
+	}
+	
+	key := args[1]
+	
+	kv.RLock()
+	e, exists := kv.m[key]
+	kv.RUnlock()
+	if !exists {
+		writeSimple(conn, "none") // RESP Simple String for non-existing key
+		return
+	}
+
+	switch e.kind {
+	case kindString:
+		writeSimple(conn, "string") // RESP Simple String for string type
+	case kindList:
+		writeSimple(conn, "list") // RESP Simple String for list type
+	// Add more cases for other types if needed
+	// case kindSet:
+	// 	writeSimple(conn, "set") // RESP Simple String for set type
+	// case kindZSet:
+	// 	writeSimple(conn, "zset") // RESP Simple String for sorted set type
+	// case kindHash:
+	// 	writeSimple(conn, "hash") // RESP Simple String for hash type
+	// case kindStream:
+	// 	writeSimple(conn, "stream") // RESP Simple String for stream type
+	default:
+		writeError(conn, "unknown type") // RESP Error for unknown type
+	}
+}
+
