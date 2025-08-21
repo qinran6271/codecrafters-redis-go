@@ -9,51 +9,124 @@ import (
     "net"
 )
 
-// 读取一行，去掉结尾的 CRLF
+// // 读取一行，去掉结尾的 CRLF
+// func readLine(r *bufio.Reader) (string, error) {
+// 	s, err := r.ReadString('\n')
+// 	if err != nil {
+// 		return "", err
+// 	}
+// 	return strings.TrimRight(s, "\r\n"), nil
+// }
+
+// // 读取 RESP Bulk String：$<len>\r\n<payload>\r\n
+// func readBulk(r *bufio.Reader) (string, error) {
+// 	lenLine, err := readLine(r) // 例如 "$3"
+// 	if err != nil {
+// 		return "", err
+// 	}
+// 	if !strings.HasPrefix(lenLine, "$") {
+// 		return "", fmt.Errorf("expect $, got %q", lenLine)
+// 	}
+// 	n, err := strconv.Atoi(lenLine[1:])
+// 	if err != nil || n < 0 {
+// 		return "", fmt.Errorf("bad bulk len: %v", lenLine)
+// 	}
+// 	buf := make([]byte, n)
+// 	if _, err := io.ReadFull(r, buf); err != nil {
+// 		return "", err
+// 	}
+// 	// 丢弃结尾的 \r\n
+// 	if _, err := r.ReadByte(); err != nil { return "", err }
+// 	if _, err := r.ReadByte(); err != nil { return "", err }
+// 	return string(buf), nil
+// }
+
+// // 读取 RESP Array：*<n>\r\n 后跟 n 个 Bulk
+// func readArray(r *bufio.Reader) ([]string, error) {
+// 	head, err := readLine(r) // 例如 "*2"
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	if !strings.HasPrefix(head, "*") {
+// 		return nil, fmt.Errorf("expect *, got %q", head)
+// 	}
+// 	n, err := strconv.Atoi(head[1:])
+// 	if err != nil || n < 0 {
+// 		return nil, fmt.Errorf("bad array len: %v", head)
+// 	}
+// 	args := make([]string, 0, n)
+// 	for i := 0; i < n; i++ {
+// 		s, err := readBulk(r)
+// 		if err != nil {
+// 			return nil, err
+// 		}
+// 		args = append(args, s)
+// 	}
+// 	return args, nil
+// }
+
+// 读取一行，必须以 \r\n 结尾
 func readLine(r *bufio.Reader) (string, error) {
 	s, err := r.ReadString('\n')
 	if err != nil {
 		return "", err
 	}
-	return strings.TrimRight(s, "\r\n"), nil
+	// 检查协议，必须 \r\n 结尾
+	if len(s) < 2 || s[len(s)-2] != '\r' || s[len(s)-1] != '\n' {
+		return "", fmt.Errorf("protocol error: %q", s)
+	}
+	return s[:len(s)-2], nil
 }
 
-// 读取 RESP Bulk String：$<len>\r\n<payload>\r\n
+// 读取 Bulk String
 func readBulk(r *bufio.Reader) (string, error) {
-	lenLine, err := readLine(r) // 例如 "$3"
+	lenLine, err := readLine(r) // e.g. "$3"
 	if err != nil {
 		return "", err
 	}
 	if !strings.HasPrefix(lenLine, "$") {
 		return "", fmt.Errorf("expect $, got %q", lenLine)
 	}
+
+	// Bulk string 长度
 	n, err := strconv.Atoi(lenLine[1:])
 	if err != nil || n < 0 {
 		return "", fmt.Errorf("bad bulk len: %v", lenLine)
 	}
+
+	// 读出内容
 	buf := make([]byte, n)
 	if _, err := io.ReadFull(r, buf); err != nil {
 		return "", err
 	}
-	// 丢弃结尾的 \r\n
-	if _, err := r.ReadByte(); err != nil { return "", err }
-	if _, err := r.ReadByte(); err != nil { return "", err }
+
+	// 丢掉结尾的 \r\n
+	if _, err := r.ReadByte(); err != nil {
+		return "", err
+	}
+	if _, err := r.ReadByte(); err != nil {
+		return "", err
+	}
+
 	return string(buf), nil
 }
 
-// 读取 RESP Array：*<n>\r\n 后跟 n 个 Bulk
+// 读取数组（命令参数）
 func readArray(r *bufio.Reader) ([]string, error) {
-	head, err := readLine(r) // 例如 "*2"
+	head, err := readLine(r) // e.g. "*3"
 	if err != nil {
 		return nil, err
 	}
 	if !strings.HasPrefix(head, "*") {
 		return nil, fmt.Errorf("expect *, got %q", head)
 	}
+
+	// 数组长度
 	n, err := strconv.Atoi(head[1:])
 	if err != nil || n < 0 {
 		return nil, fmt.Errorf("bad array len: %v", head)
 	}
+
 	args := make([]string, 0, n)
 	for i := 0; i < n; i++ {
 		s, err := readBulk(r)

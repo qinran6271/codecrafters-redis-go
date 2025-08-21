@@ -321,6 +321,7 @@ func cmdTYPE(conn net.Conn, args []string) {
 
 func cmdXADD(conn net.Conn, args []string) {
 	if len(args) < 5 || len(args)%2 != 1 {
+		fmt.Printf("args: %#v\n", args)
 		writeError(conn, "wrong number of arguments for 'xadd' command")
 		return
 	}
@@ -328,7 +329,7 @@ func cmdXADD(conn net.Conn, args []string) {
 	id := args[2] // The ID of the entry, can be "0-0
 
 	//parse the ID
-	ms, seq, autoSeq, err := parseStreamID(id)
+	ms, seq, autoSeq, autoTime, err := parseStreamID(id)
 	if err != nil {
 		writeError(conn, err.Error())
 		return
@@ -357,7 +358,23 @@ func cmdXADD(conn net.Conn, args []string) {
 		}
 	}
 
-	// autoSeq is true if the ID is "*"
+	// If the ID is "*", 完全自动生成时间戳
+	if autoTime {
+		ms = time.Now().UnixMilli() // Get the current time in milliseconds
+		if len(e.streams) == 0 {
+			seq = 0 // If the stream is empty, start with sequence 0
+		} else {
+			last := e.streams[len(e.streams)-1]
+			if last.msTime == ms {
+				seq = last.seqNum + 1 // Increment the sequence number if the timestamp is the same
+			} else {
+				seq = 0 // Reset sequence number if the timestamp is different
+			}
+		}
+	}
+
+
+	// autoSeq is true if the ID is "*" 只自动 seq 部分
 	if autoSeq {
 		if len(e.streams) == 0 {
 			if ms == 0 {

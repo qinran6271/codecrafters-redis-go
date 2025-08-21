@@ -6,6 +6,7 @@ import (
 	"net" // For creating a TCP server and accepting client connections.
 	"strings" // For processing and parsing command strings.
 	"os"  // For handling errors and exiting the program gracefully.
+	"io" // For reading input from the client.
 )
 
 // Ensures gofmt doesn't remove the "net" and "os" imports in stage 1 (feel free to remove this!)
@@ -42,14 +43,14 @@ func handleConnection(conn net.Conn) {
 	for {
 		args, err := readArray(r)
 
-		if err != nil {
-			// if err.Error() == "EOF" {
-			// 	fmt.Println("Client disconnected")
-			// 	return // Exit the loop if the client disconnects
-			// }
-			writeError(conn, fmt.Sprintf("error reading command: %v", err))
-			return
-		}
+        if err != nil {
+            if err == io.EOF {
+                return // client closed connection
+            }
+            writeError(conn, fmt.Sprintf("ERR error reading command: %v", err))
+            return
+        }
+
 		if len(args) == 0 { 
 			fmt.Println("Received empty command, skipping...")
 			continue  // Skip empty commands
@@ -60,7 +61,7 @@ func handleConnection(conn net.Conn) {
 		} else {
 			writeError(conn, fmt.Sprintf("unknown command '%s'", args[0]))
 		}
-
+		fmt.Printf("args: %#v\n", args) // Debug 输出
 	}
 
 }
