@@ -328,7 +328,7 @@ func cmdXADD(conn net.Conn, args []string) {
 	id := args[2] // The ID of the entry, can be "0-0
 
 	//parse the ID
-	ms, seq, err := parseStreamID(id)
+	ms, seq, autoSeq, err := parseStreamID(id)
 	if err != nil {
 		writeError(conn, err.Error())
 		return
@@ -357,20 +357,44 @@ func cmdXADD(conn net.Conn, args []string) {
 		}
 	}
 
+	// autoSeq is true if the ID is "*"
+	if autoSeq {
+		if len(e.streams) == 0 {
+			if ms == 0 {
+				seq = 1
+			} else {
+				seq = 0
+			}
+		} else {
+			last := e.streams[len(e.streams)-1]
+			if last.msTime == ms {
+				seq = last.seqNum + 1 // Increment the sequence number if the timestamp is the same
+			} else {
+				if ms == 0 {
+					seq = 1 // If the timestamp is 0, start with sequence 1
+				} else {						
+				seq = 0 // Reset sequence number if the timestamp is different
+				}
+			}
+		}
+	}
+
 	// Validate the stream ID
 	if err := validateStreamID(ms, seq, e.streams); err != nil {
 		writeError(conn, err.Error())
 		return
 	}
+	
+	newID := fmt.Sprintf("%d-%d", ms, seq)
 
 	// append the new stream entry
 	e.streams = append(e.streams, streamEntry{
-		id:     id,
+		id:     newID,
 		msTime: ms,
 		seqNum: seq,
 		fields: fields,
 	})
 	kv.m[key] = e // Update the entry in the map
-	writeBulk(conn, id) // Write the ID of the new entry as a RESP Bulk String
+	writeBulk(conn, newID ) // Write the ID of the new entry as a RESP Bulk String
 
 }

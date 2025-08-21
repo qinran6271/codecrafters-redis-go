@@ -244,20 +244,25 @@ func lpopKey(key string, count int) ([]string, error) {
 	
 }
 
-func parseStreamID(id string) (int64, int64, error) {
+func parseStreamID(id string) (ms int64, seq int64, autoSeq bool, err error) {
 	parts := strings.Split(id, "-")
 	if len(parts) != 2 {
-		return 0, 0, errors.New("ERR Invalid stream ID format")
+		return 0, 0, false, errors.New("ERR Invalid stream ID format")
 	}
-	ms, err := strconv.ParseInt(parts[0], 10, 64)
+	ms, err = strconv.ParseInt(parts[0], 10, 64)
 	if err != nil {
-		return 0, 0, errors.New("ERR Invalid stream ID format")
+		return 0, 0, false, errors.New("ERR Invalid stream ID format")
 	}
-	seq, err := strconv.ParseInt(parts[1], 10, 64)
-	if err != nil {
-		return 0, 0, errors.New("ERR Invalid stream ID format")
+	if parts[1] == "*" {
+		autoSeq = true // If the second part is "*", it indicates auto-sequence
+		seq -= 1 //临时标记
+	} else {
+		seq, err = strconv.ParseInt(parts[1], 10, 64)
+		if err != nil {
+			return 0, 0, false, errors.New("ERR Invalid stream ID format")
+		}
 	}
-	return ms, seq, nil
+	return ms, seq, autoSeq, nil
 }
 
 func validateStreamID(newMs, newSeq int64, stream []streamEntry) error {
