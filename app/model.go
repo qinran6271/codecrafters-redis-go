@@ -15,6 +15,8 @@ const (
 
 type streamEntry struct {
 	id string // Unique identifier for the stream entry
+	msTime int64 // Timestamp of the entry, can be used for ordering
+	seqNum int64 // Sequence number for the entry, can be used for ordering
 	fields map[string]string // Fields of the stream entry, key-value pairs
 }
 

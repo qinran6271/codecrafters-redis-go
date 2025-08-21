@@ -327,7 +327,14 @@ func cmdXADD(conn net.Conn, args []string) {
 	key := args[1]
 	id := args[2] // The ID of the entry, can be "0-0
 
-	// field-value pairs
+	//parse the ID
+	ms, seq, err := parseStreamID(id)
+	if err != nil {
+		writeError(conn, err.Error())
+		return
+	}
+
+	// parse field-value pairs
 	fields := make(map[string]string)
 	for i := 3; i < len(args); i += 2 {
 		fields[args[i]] = args[i+1] // Store field-value pairs in a map
@@ -350,9 +357,17 @@ func cmdXADD(conn net.Conn, args []string) {
 		}
 	}
 
+	// Validate the stream ID
+	if err := validateStreamID(ms, seq, e.streams); err != nil {
+		writeError(conn, err.Error())
+		return
+	}
+
 	// append the new stream entry
 	e.streams = append(e.streams, streamEntry{
 		id:     id,
+		msTime: ms,
+		seqNum: seq,
 		fields: fields,
 	})
 	kv.m[key] = e // Update the entry in the map

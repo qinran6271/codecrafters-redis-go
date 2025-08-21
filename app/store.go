@@ -5,6 +5,8 @@ package main
 import (
 	"time"
 	"errors"
+	"strings"
+	"strconv"
 )
 
 var ErrWrongType = errors.New("WRONGTYPE of value for this operation")
@@ -239,5 +241,40 @@ func lpopKey(key string, count int) ([]string, error) {
 	e.l = e.l[count:] // Update the list by removing the popped elements
 	kv.m[key] = e // Update the entry in the map
 	return res, nil // Return the popped elements
+	
+}
+
+func parseStreamID(id string) (int64, int64, error) {
+	parts := strings.Split(id, "-")
+	if len(parts) != 2 {
+		return 0, 0, errors.New("ERR Invalid stream ID format")
+	}
+	ms, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil {
+		return 0, 0, errors.New("ERR Invalid stream ID format")
+	}
+	seq, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil {
+		return 0, 0, errors.New("ERR Invalid stream ID format")
+	}
+	return ms, seq, nil
+}
+
+func validateStreamID(newMs, newSeq int64, stream []streamEntry) error {
+	if newMs == 0 && newSeq == 0 {
+		return errors.New("ERR The ID specified in XADD must be greater than 0-0")
+	}
+	if len(stream) == 0 {
+		if newMs < 0||(newMs == 0 && newSeq < 1) {
+			return errors.New("ERR The ID specified in XADD must be greater than 0-0")
+		}
+		return nil // Valid ID for an empty stream
+	}
+
+	last := stream[len(stream)-1] // Get the last entry in the stream
+	if newMs < last.msTime || (newMs == last.msTime && newSeq <= last.seqNum) {
+		return errors.New("ERR The ID specified in XADD is equal or smaller than the target stream top item")
+	}
+	return nil // Valid ID for a non-empty stream
 	
 }
