@@ -43,7 +43,6 @@ func removeWaiter(key string, w *blWaiter) {
 	} else {
 		blq.m[key] = q // Update the list for the key
 	}
-	blq.Unlock()
 }
 
 

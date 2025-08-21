@@ -1,10 +1,10 @@
 package main
 
 import (
+	"fmt"
 	"net"
 	"strconv"
 	"strings"
-	"fmt"
 	"time"
 )
 
@@ -222,7 +222,7 @@ func cmdBLPOP(conn net.Conn, args []string) {
 		return
 	}
 	key := args[1]
-	to, err := strconv.Atoi(args[2])
+	to, err := strconv.ParseFloat(args[2], 64)
 	if err != nil || to < 0 {
 		writeError(conn, "invalid timeout value for 'blpop' command")
 		return
@@ -264,10 +264,12 @@ func cmdBLPOP(conn net.Conn, args []string) {
 	// wait with timeout
 	select {
 	case res := <-waiter.ch:
+		fmt.Println("hhhh", key)
 		writeArrayHeader(conn, 2) // RESP Array with length 2
 		writeBulkString(conn, res.key) // Write the key as a RESP Bulk String
 		writeBulkString(conn, res.value) // Write the value as a RESP Bulk String
-	case <-time.After(time.Duration(to) * time.Second):
+	case <-time.After(time.Duration(to * float64(time.Second))):
+		fmt.Println("BLPOP timeout for key:", key)
 		removeWaiter(key, waiter) // Remove the waiter if timeout occurs
 		writeNullBulk(conn) // RESP Null Bulk String for timeout
 	}
