@@ -1,5 +1,7 @@
 package main
 
+// ***********************************basic***********************************
+
 import (
 	"errors"
 	"sync"
@@ -68,6 +70,8 @@ func getKey(key string) (string, bool) {
 	return e.s, exists
 }
 
+// ***********************************lists***********************************
+
 func rpushKey(key string, values []string) (int, error){
 	now := time.Now()
 
@@ -82,6 +86,7 @@ func rpushKey(key string, values []string) (int, error){
 		}
 	}
 
+
 	if !exists {
 		newList := make([]string, 0, len(values))
 		newList = append(newList, values...)
@@ -90,16 +95,24 @@ func rpushKey(key string, values []string) (int, error){
 			l: newList,
 			// No expiration for the new list
 		}
-		return len(newList), nil
+	}else{
+		if e.kind != kindList {
+			return 0, ErrWrongType // Return error if the existing value is not a list
+		}
+
+		e.l = append(e.l, values...)
+		kv.m[key] = e // Update the entry in the map
 	}
 
-	if e.kind != kindList {
-		return 0, ErrWrongType // Return error if the existing value is not a list
+	n := len(kv.m[key].l)
+	for {
+		if !deliverToWaiterLocked(key) {
+			break // Exit the loop if no waiters were delivered
+		}
 	}
-
-	e.l = append(e.l, values...)
-	kv.m[key] = e // Update the entry in the map
-	return len(e.l), nil // Return the new length of the list
+	
+	
+	return n, nil // Return the new length of the list
 
 }
 
@@ -174,20 +187,24 @@ func lpushKey(key string, values []string) (int, error) {
 			l: rev,
 			// No expiration for the new list
 		}
-		return len(rev), nil
-	}
-
-	if e.kind != kindList {
+	} else {
+		if e.kind != kindList {
 		return 0, ErrWrongType // Return error if the existing value is not a list
+		}
+
+		newList := make([]string, 0, len(rev)+len(e.l))
+		newList = append(newList, rev...)
+		newList = append(newList, e.l...)
+
+		e.l = newList // Update the list with the new values
+		kv.m[key] = e // Update the entry in the map
 	}
 
-	newList := make([]string, 0, len(rev)+len(e.l))
-	newList = append(newList, rev...)
-	newList = append(newList, e.l...)
 
-	e.l = newList // Update the list with the new values
-	kv.m[key] = e // Update the entry in the map
-	return len(e.l), nil // Return the new length of the list
+	n := len(kv.m[key].l)
+	for { if !deliverToWaiterLocked(key) {break}}
+	
+	return n, nil // Return the new length of the list
 }
 
 func llenKey(key string) (int, error) {

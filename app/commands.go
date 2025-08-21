@@ -5,7 +5,10 @@ import (
 	"strconv"
 	"strings"
 	"fmt"
+	"time"
 )
+
+// **********************basic commands***********************
 
 func cmdPING(conn net.Conn, args []string) {
 	if len(args) == 1 {
@@ -70,6 +73,8 @@ func cmdGET(conn net.Conn, args []string) {
 	}		
 }
 
+// **********************lists commands***********************
+
 func cmdRPUSH(conn net.Conn, args []string) {
 	if len(args) < 3 {
 		writeError(conn, "wrong number of arguments for 'rpush' command")
@@ -89,6 +94,8 @@ func cmdRPUSH(conn net.Conn, args []string) {
 	}
 	writeInteger(conn, int64(newLen))
 }
+
+
 
 func cmdLRANGE(conn net.Conn, args []string) {
 	if len(args) < 4 {
@@ -207,4 +214,61 @@ func cmdLPOP(conn net.Conn, args []string) {
 		writeBulkString(conn, item) // Write each item as a RESP Bulk String
 	}
 	
+}
+
+func cmdBLPOP(conn net.Conn, args []string) {
+	if len(args) < 3 {
+		writeError(conn, "wrong number of arguments for 'blpop' command")
+		return
+	}
+	key := args[1]
+	to, err := strconv.Atoi(args[2])
+	if err != nil || to < 0 {
+		writeError(conn, "invalid timeout value for 'blpop' command")
+		return
+	}
+
+	// no blocking if key exists
+	items, err := lpopKey(key, 1)
+	if err != nil {
+		if err == ErrWrongType {
+			writeError(conn, err.Error())
+			return
+		} else {
+			writeError(conn, "internal error")
+			return
+		}
+	}
+
+	if len(items) > 0 {
+		writeArrayHeader(conn, 2) // RESP Array with length 2
+		writeBulkString(conn, key) // Write the key as a RESP Bulk String
+		writeBulkString(conn, items[0]) // Write the first item as a RESP Bulk String
+		return
+	}
+
+	// If no items were popped, we need to block
+	waiter := &blWaiter{ch: make(chan blpopResult, 1)} // Create a new waiter with a buffered channel
+	enqueueWaiter(key, waiter)
+
+	
+	if to == 0 {
+		// wait indefinitely
+		res := <-waiter.ch //如果channel是空的就在这一行阻塞
+		writeArrayHeader(conn, 2) // RESP Array with length 2
+		writeBulkString(conn, res.key) // Write the key as a RESP Bulk String
+		writeBulkString(conn, res.value) // Write the value as a RESP Bulk String
+		return
+	}
+
+	// wait with timeout
+	select {
+	case res := <-waiter.ch:
+		writeArrayHeader(conn, 2) // RESP Array with length 2
+		writeBulkString(conn, res.key) // Write the key as a RESP Bulk String
+		writeBulkString(conn, res.value) // Write the value as a RESP Bulk String
+	case <-time.After(time.Duration(to) * time.Second):
+		removeWaiter(key, waiter) // Remove the waiter if timeout occurs
+		writeNullBulk(conn) // RESP Null Bulk String for timeout
+	}
 }
