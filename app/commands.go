@@ -304,10 +304,58 @@ func cmdTYPE(conn net.Conn, args []string) {
 	// 	writeSimple(conn, "zset") // RESP Simple String for sorted set type
 	// case kindHash:
 	// 	writeSimple(conn, "hash") // RESP Simple String for hash type
-	// case kindStream:
-	// 	writeSimple(conn, "stream") // RESP Simple String for stream type
+	case kindStream:
+		writeSimple(conn, "stream") // RESP Simple String for stream type
 	default:
 		writeError(conn, "unknown type") // RESP Error for unknown type
 	}
 }
 
+
+// cmdXADD handles the XADD command for adding entries to a stream
+// eg. 
+// $ redis-cli XADD stream_key 0-1 foo bar 
+// "0-1"
+// $ redis-cli XADD stream_key 1526919030474-0 temperature 36 humidity 95 
+// "1526919030474-0" # (ID of the entry created)
+
+func cmdXADD(conn net.Conn, args []string) {
+	if len(args) < 5 || len(args)%2 != 1 {
+		writeError(conn, "wrong number of arguments for 'xadd' command")
+		return
+	}
+	key := args[1]
+	id := args[2] // The ID of the entry, can be "0-0
+
+	// field-value pairs
+	fields := make(map[string]string)
+	for i := 3; i < len(args); i += 2 {
+		fields[args[i]] = args[i+1] // Store field-value pairs in a map
+	}
+
+	kv.Lock()
+	defer kv.Unlock()
+
+	e, exists := kv.m[key]
+	if !exists {
+		// If the key does not exist, create a new stream entry
+		e = entry{
+			kind:    kindStream,
+			streams: []streamEntry{},
+		}
+	}else{
+		if e.kind != kindStream {
+			writeError(conn, ErrWrongType.Error())
+			return
+		}
+	}
+
+	// append the new stream entry
+	e.streams = append(e.streams, streamEntry{
+		id:     id,
+		fields: fields,
+	})
+	kv.m[key] = e // Update the entry in the map
+	writeBulk(conn, id) // Write the ID of the new entry as a RESP Bulk String
+
+}

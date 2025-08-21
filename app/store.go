@@ -4,8 +4,10 @@ package main
 
 import (
 	"time"
+	"errors"
 )
 
+var ErrWrongType = errors.New("WRONGTYPE of value for this operation")
 
 func init() { 
 	kv.m = make(map[string]entry) 
