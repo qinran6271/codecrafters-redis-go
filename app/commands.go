@@ -465,3 +465,57 @@ func cmdXRANGE(conn net.Conn, args []string) {
 	}
 
 }
+
+// XREAD STREAMS some_key 1526985054069-0
+func cmdREAD(conn net.Conn, args []string) {
+	if len(args) < 4 || strings.ToUpper(args[1]) != "STREAMS" || (len(args)-2)%2 != 0 {
+		writeError(conn, "wrong number of arguments for 'xread' command")
+		return
+	}
+
+	// parse key-ID pairs
+	// XREAD [COUNT n] [BLOCK ms] STREAMS key1 key2 ... id1 id2 ...
+	keys := args[2:len(args)/2+1]
+	ids := args[len(args)/2+1:]
+
+	kv.RLock()
+    defer kv.RUnlock()
+
+	// RESP
+	writeArrayHeader(conn, len(keys)) // RESP Array with length equal to number of keys
+	for i, key := range keys {
+		id := ids[i]
+		ms, seq := parseStreamIDForRange(id, true)
+
+		e, exists := kv.m[key]
+		if !exists || e.kind != kindStream {
+			writeArrayHeader(conn, 2) 
+			writeBulkString(conn, key) // Write the key as a RESP Bulk String
+			writeArrayHeader(conn, 0) // Empty array for non-existing key or wrong type
+			continue
+		}
+
+		var result []streamEntry
+		for _, se := range e.streams {
+			if se.msTime > ms || (se.msTime == ms && se.seqNum > seq) {
+				result = append(result, se)
+			}
+		}
+		// RESP
+		writeArrayHeader(conn, 2) // Each entry is an array of [key, entries]
+		writeBulkString(conn, key) //
+
+		// entries
+		writeArrayHeader(conn, len(result)) // RESP Array with length equal to number of entries
+		for _, se := range result {
+			writeArrayHeader(conn, 2) // Each entry is an array of [ID, fields]
+			writeBulkString(conn, se.id) // Write the ID as a RESP Bulk String
+
+			writeArrayHeader(conn, len(se.fields)*2) // Fields are key-value pairs
+			for field, value := range se.fields {
+				writeBulkString(conn, field) // Write field name
+				writeBulkString(conn, value) // Write field value
+			}
+		}
+	}
+}

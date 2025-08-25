@@ -300,6 +300,14 @@ func splitStreamID(id string) (int64, int64) {
 }
 
 func parseStreamIDForRange(id string, isStart bool) (int64, int64) {
+	switch id {
+    case "-":
+
+        return math.MinInt64, 0
+    case "+":
+        // 最大 ID（流的结尾）
+        return math.MaxInt64, math.MaxInt64
+    }
     ms, seq := splitStreamID(id)
     if !strings.Contains(id, "-") {
         if isStart {
