@@ -7,6 +7,7 @@ import (
 	"errors"
 	"strings"
 	"strconv"
+	"math"
 )
 
 var ErrWrongType = errors.New("WRONGTYPE of value for this operation")
@@ -286,4 +287,26 @@ func validateStreamID(newMs, newSeq int64, stream []streamEntry) error {
 	}
 	return nil // Valid ID for a non-empty stream
 	
+}
+
+func splitStreamID(id string) (int64, int64) {
+    parts := strings.Split(id, "-")
+    ms, _ := strconv.ParseInt(parts[0], 10, 64)
+    seq := int64(0)
+    if len(parts) > 1 {
+        seq, _ = strconv.ParseInt(parts[1], 10, 64)
+    }
+    return ms, seq
+}
+
+func parseStreamIDForRange(id string, isStart bool) (int64, int64) {
+    ms, seq := splitStreamID(id)
+    if !strings.Contains(id, "-") {
+        if isStart {
+            seq = 0
+        } else {
+            seq = math.MaxInt64
+        }
+    }
+    return ms, seq
 }

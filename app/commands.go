@@ -415,3 +415,53 @@ func cmdXADD(conn net.Conn, args []string) {
 	writeBulk(conn, newID ) // Write the ID of the new entry as a RESP Bulk String
 
 }
+
+// It takes two arguments: start and end. 
+// The command returns all entries in the stream with IDs between the start and end IDs.
+//$ redis-cli XRANGE some_key 1526985054069 1526985054079
+func cmdXRANGE(conn net.Conn, args []string) {
+	if len(args) != 4 {
+		writeError(conn, "wrong number of arguments for 'xrange' command")
+		return
+	}
+	key := args[1]
+	startID := args[2]
+	endID := args[3]
+
+
+	kv.RLock()
+	e, exists := kv.m[key]
+	kv.RUnlock()
+
+	if !exists {
+		writeArrayHeader(conn, 0) // RESP Array with length 0 for non-existing key
+		return
+	}
+
+	// parse startID and endID
+	startMs, startSeq := parseStreamIDForRange(startID, true)
+	endMs, endSeq := parseStreamIDForRange(endID, false)
+
+	// collect entries within the specified range
+	var result []streamEntry
+	for _, se := range e.streams {
+		if (se.msTime > startMs || (se.msTime == startMs && se.seqNum >= startSeq)) &&
+		   (se.msTime < endMs || (se.msTime == endMs && se.seqNum <= endSeq)) {
+			result = append(result, se)
+		}
+	}
+
+	// RESP
+	writeArrayHeader(conn, len(result)) // RESP Array with length
+	for _, se := range result {
+		writeArrayHeader(conn, 2) // Each entry is an array of [ID, fields]
+		writeBulkString(conn, se.id) // Write the ID as a RESP Bulk String
+
+		writeArrayHeader(conn, len(se.fields)*2) // Fields are key-value pairs
+		for field, value := range se.fields {
+			writeBulkString(conn, field) // Write field name
+			writeBulkString(conn, value) // Write field value
+		}
+	}
+
+}
