@@ -405,14 +405,17 @@ func cmdXADD(conn net.Conn, args []string) {
 	newID := fmt.Sprintf("%d-%d", ms, seq)
 
 	// append the new stream entry
-	e.streams = append(e.streams, streamEntry{
-		id:     newID,
-		msTime: ms,
-		seqNum: seq,
-		fields: fields,
-	})
+	newEntry := streamEntry{
+        id:     id,
+        msTime: ms,
+        seqNum: seq,
+        fields: fields,
+    }
+	
+	e.streams = append(e.streams, newEntry)
 	kv.m[key] = e // Update the entry in the map
 	writeBulk(conn, newID ) // Write the ID of the new entry as a RESP Bulk String
+	notifyXReadWaiters(key, newEntry)
 
 }
 
@@ -468,54 +471,122 @@ func cmdXRANGE(conn net.Conn, args []string) {
 
 // XREAD STREAMS some_key 1526985054069-0
 func cmdREAD(conn net.Conn, args []string) {
-	if len(args) < 4 || strings.ToUpper(args[1]) != "STREAMS" || (len(args)-2)%2 != 0 {
-		writeError(conn, "wrong number of arguments for 'xread' command")
+    if len(args) < 4 {
+        writeError(conn, "wrong number of arguments for 'xread' command")
+        return
+    }
+
+	blockMs := int64(0)
+	streamsIdx := 1
+
+	//
+	i := 1
+	for i < len(args) {
+		switch strings.ToUpper(args[i]) {
+		//args := []string{"XREAD", "BLOCK", "5000", "STREAMS", "mystream", "0"}
+		case "BLOCK": 
+			if i+1 >= len(args) {
+				writeError(conn, "syntax error")
+				return
+			}
+			ms, err := strconv.ParseInt(args[i+1], 10, 64)
+			if err != nil {
+				writeError(conn, "invalid block timeout")
+				return
+			}
+			blockMs = ms
+			i += 2 // Skip the next argument as it's the value for BLOCK
+		case "STREAMS": 
+			streamsIdx = i
+			i ++
+			goto ParseStreams
+		default:
+			i ++
+		}
+	}
+
+	ParseStreams:
+	// STREAMS 后面：一半是 keys，一半是 ids
+	if streamsIdx == -1 || (len(args)-streamsIdx-1)%2 != 0 {
+        writeError(conn, "syntax error")
+        return
+    }
+	pairs := (len(args) - streamsIdx - 1) / 2
+	keys := args[streamsIdx+1 : streamsIdx+1+pairs]
+	ids  := args[streamsIdx+1+pairs:]
+	// if len(args) < 4 || strings.ToUpper(args[1]) != "STREAMS" || (len(args)-2)%2 != 0 {
+	// 	writeError(conn, "wrong number of arguments for 'xread' command")
+	// 	return
+	// }
+
+	// // parse key-ID pairs
+	// // XREAD [COUNT n] [BLOCK ms] STREAMS key1 key2 ... id1 id2 ...
+	// keys := args[2:len(args)/2+1]
+	// ids := args[len(args)/2+1:]
+
+	kv.RLock()
+	results := make(map[string][]streamEntry)
+	for i, key := range keys {
+		id := ids[i]
+		ms, seq := parseStreamIDForRange(id, true)	
+		e, exists := kv.m[key]
+		if !exists || e.kind != kindStream {
+			continue // Skip non-existing keys or keys that are not streams
+		}	
+		for _, se := range e.streams {
+			if se.msTime > ms || (se.msTime == ms && se.seqNum > seq) {
+				results[key] = append(results[key], se)
+			}
+		}
+	}
+    kv.RUnlock()
+
+	// If we have results, return them immediately
+	if len(results) > 0 {
+		writeArrayHeader(conn, len(results)) // Number of streams
+		for key, entries := range results {
+			writeArrayHeader(conn, 2) // Number of elements in this stream
+			writeBulk(conn, key) // Stream key
+
+			writeArrayHeader(conn, len(entries)) // Number of entries
+			for _, se := range entries {
+				writeArrayHeader(conn, 2) // Each entry is an array of [ID, fields]
+				writeBulkString(conn, se.id) // Write the ID as a RESP Bulk String
+
+				writeArrayHeader(conn, len(se.fields)*2) // Fields are key-value pairs
+				for field, value := range se.fields {
+					writeBulkString(conn, field) // Write field name
+					writeBulkString(conn, value) // Write field value
+				}
+			}
+		}
 		return
 	}
 
-	// parse key-ID pairs
-	// XREAD [COUNT n] [BLOCK ms] STREAMS key1 key2 ... id1 id2 ...
-	keys := args[2:len(args)/2+1]
-	ids := args[len(args)/2+1:]
+	// If no results and BLOCK is specified, we need to wait
+	if blockMs == 0 {
+		writeNullBulk(conn) // RESP Null Bulk String for no results and no blocking
+		return
+	}
 
-	kv.RLock()
-    defer kv.RUnlock()
-
-	// RESP
-	writeArrayHeader(conn, len(keys)) // RESP Array with length equal to number of keys
+	//If no results & BLOCK > 0, we need to wait
 	for i, key := range keys {
-		id := ids[i]
-		ms, seq := parseStreamIDForRange(id, true)
-
-		e, exists := kv.m[key]
-		if !exists || e.kind != kindStream {
-			writeArrayHeader(conn, 2) 
-			writeBulkString(conn, key) // Write the key as a RESP Bulk String
-			writeArrayHeader(conn, 0) // Empty array for non-existing key or wrong type
-			continue
+		waiter := &xreadWaiter{
+			conn: conn,
+			key: key,
+			lastID: ids[i],
+			timeout: time.Duration(blockMs) * time.Millisecond,
+			done: make(chan struct{}),		
 		}
+		addXReadWaiter(key, waiter)
 
-		var result []streamEntry
-		for _, se := range e.streams {
-			if se.msTime > ms || (se.msTime == ms && se.seqNum > seq) {
-				result = append(result, se)
+		go func(w *xreadWaiter) {
+			select {
+			case <- w.done:
+				return
+			case <- time.After(w.timeout):
+				writeNullBulk(w.conn) // RESP Null Bulk String for timeout
 			}
-		}
-		// RESP
-		writeArrayHeader(conn, 2) // Each entry is an array of [key, entries]
-		writeBulkString(conn, key) //
-
-		// entries
-		writeArrayHeader(conn, len(result)) // RESP Array with length equal to number of entries
-		for _, se := range result {
-			writeArrayHeader(conn, 2) // Each entry is an array of [ID, fields]
-			writeBulkString(conn, se.id) // Write the ID as a RESP Bulk String
-
-			writeArrayHeader(conn, len(se.fields)*2) // Fields are key-value pairs
-			for field, value := range se.fields {
-				writeBulkString(conn, field) // Write field name
-				writeBulkString(conn, value) // Write field value
-			}
-		}
+		}(waiter)
 	}
 }

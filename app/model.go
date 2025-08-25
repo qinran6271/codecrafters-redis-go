@@ -4,6 +4,22 @@ import (
 	"sync"
 	"time"
 )
+//kv   (全局存储)
+// │
+// ├── m  (map[string]entry)   // Redis 的 keyspace
+// │   │
+// │   ├── "foo" → entry{kind: kindString, s: "bar"}
+// │   ├── "list1" → entry{kind: kindList, l: ["a","b","c"]}
+// │   └── "mystream" → entry{
+// │         kind: kindStream,
+// │         streams: [
+// │           streamEntry{id:"1000-0", fields:{"temperature":"36"}},
+// │           streamEntry{id:"1000-1", fields:{"humidity":"95"}},
+// │         ]
+// │      }
+// │
+// └── RWMutex (保证多 goroutine 并发安全)
+
 
 type valueKind int // Define a new type for value kinds based with constants
 
@@ -12,6 +28,8 @@ const (
 	kindList // index 1, list type
 	kindStream // index 2, stream type
 )
+
+
 
 type streamEntry struct {
 	id string // Unique identifier for the stream entry
@@ -28,8 +46,9 @@ type entry struct {
 	expires time.Time // Expiration time for the entry, zero if no expiration
 }
 
+// 最外层的全局变量，表示整个 KV 存储
 var kv struct {
 	sync.RWMutex
-	m map[string]entry
+	m map[string]entry // 全局 KV 表
 }
 
