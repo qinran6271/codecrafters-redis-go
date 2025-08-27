@@ -659,3 +659,11 @@ func cmdINCR(conn net.Conn, args []string) {
 	setKey(key, strconv.Itoa(intVal), 0)
 	writeInteger(conn, int64(intVal))
 }
+
+func cmdMULTI(conn net.Conn, args []string) {
+	if len(args) != 1 {
+		writeError(conn, "wrong number of arguments for 'multi' command")
+		return
+	}
+	writeSimple(conn, "OK")
+}
