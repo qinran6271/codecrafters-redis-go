@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 	"net"
-	"fmt"
+	// "fmt"
 )
 
 type blpopResult struct {
