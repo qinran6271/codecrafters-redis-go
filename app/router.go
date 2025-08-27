@@ -19,4 +19,5 @@ var routs = map[string]func(net.Conn, []string){
 	"XADD": cmdXADD,
 	"XRANGE": cmdXRANGE,
 	"XREAD": cmdXREAD,
+	"INCR": cmdINCR,
 }

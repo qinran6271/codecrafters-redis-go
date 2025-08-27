@@ -626,4 +626,36 @@ func writeStreamResults(conn net.Conn, results []keyResult) {
 		}
 	}
 }
-	
+
+
+// *********************Transactions**********************
+//The INCR command is used to increment the value of a key by 1.
+// 1. Key exists and has a numerical value (previous stages)
+// 2. Key doesn't exist (This stage)
+// 3. Key exists but doesn't have a numerical value (later stages)
+
+//ex. redis-cli SET foo 5
+func cmdINCR(conn net.Conn, args []string) {
+	if len(args) != 2 {
+		writeError(conn, "wrong number of arguments for 'incr' command")
+		return
+	}
+
+	key := args[1]
+
+	val, exists := getKey(key)
+	if !exists {
+		setKey(key, "1", 0)
+		writeInteger(conn, 1)
+		return
+	}
+
+	intVal, err := strconv.Atoi(val)
+	if err != nil {
+		writeError(conn, "value is not an integer or out of range")
+		return
+	}
+	intVal++
+	setKey(key, strconv.Itoa(intVal), 0)
+	writeInteger(conn, int64(intVal))
+}
