@@ -520,8 +520,22 @@ ParseStreams:
 	pairs := (len(args) - streamsIdx - 1) / 2
 	keys := args[streamsIdx+1 : streamsIdx+1+pairs]
 	ids  := args[streamsIdx+1+pairs:]
-	fmt.Println("keys:", keys, "ids:", ids)
-	
+	// fmt.Println("keys:", keys, "ids:", ids)
+
+	// === 处理 $：替换为对应 key 的最新 ID ===
+	kv.RLock()
+	for i, id := range ids {
+		if id == "$" {
+			e, exists := kv.m[keys[i]]
+			if exists && e.kind == kindStream && len(e.streams) > 0 {
+				latest := e.streams[len(e.streams)-1]
+				ids[i] = latest.id
+			} else {
+				ids[i] = "0-0" // stream 为空时，从 0-0 开始
+			}
+		}
+	}
+	kv.RUnlock()	
 
 	kv.RLock()
 	results := make([]keyResult, 0, len(keys))

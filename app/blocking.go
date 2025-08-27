@@ -123,7 +123,7 @@ func addXReadWaiter(key string, w *xreadWaiter) {
 
 // 唤醒等待者
 func notifyXReadWaiters(key string, newEntry streamEntry) {
-	fmt.Println("notifyXReadWaiters called for key:", key, "with new entry ID:", newEntry.id)
+	// fmt.Println("notifyXReadWaiters called for key:", key, "with new entry ID:", newEntry.id)
     xread.Lock()
     defer xread.Unlock()
 
