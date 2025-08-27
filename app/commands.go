@@ -671,3 +671,30 @@ func cmdMULTI(conn net.Conn, args []string) {
 	}
 	writeSimple(conn, "OK")
 }
+
+func cmdEXEC(conn net.Conn, args []string) {
+	if len(args) != 1 {
+		writeError(conn, "wrong number of arguments for 'exec' command")
+		return
+	}
+
+	state, ok := transactions[conn]
+	if !ok || !state.inMulti {
+		writeError(conn, "ERR EXEC without MULTI")
+		return
+	}
+
+	writeArrayHeader(conn, len(state.queue)) // RESP Array with length of queued commands
+	
+	for _, queued := range state.queue {
+		cmd := strings.ToUpper(queued[0])
+		if handler, ok := routs[cmd]; ok {
+			handler(conn, queued) // 真正执行命令，把结果写回 conn
+		} else {
+			writeError(conn, "unknown command '"+queued[0]+"'")
+		}
+	}
+
+	// 清理事务状态
+	delete(transactions, conn)
+}

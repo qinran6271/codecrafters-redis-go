@@ -4,7 +4,10 @@ import (
 	"net"
 )
 
-var routs = map[string]func(net.Conn, []string){
+var routs map[string]func(net.Conn, []string)
+
+func init() {
+	routs = map[string]func(net.Conn, []string){
 	"PING": cmdPING,
 	"ECHO": cmdECHO,
 	"SET":  cmdSET,
@@ -21,4 +24,7 @@ var routs = map[string]func(net.Conn, []string){
 	"XREAD": cmdXREAD,
 	"INCR": cmdINCR,
 	"MULTI": cmdMULTI,
+	"EXEC": cmdEXEC,
+	}
 }
+    
