@@ -4,6 +4,7 @@ import (
 	"sync"
 	"time"
 	"net"
+	"fmt"
 )
 
 type blpopResult struct {
@@ -97,9 +98,10 @@ func deliverToWaiterLocked (key string) bool {
 
 }
 
+
 type xreadWaiter struct {
 	conn net.Conn
-	key string
+	key string //等待者记录的自己在等哪个 key
 	lastID string
 	timeout time.Duration //表示一段时间的长度
 	done chan struct{}
@@ -121,6 +123,7 @@ func addXReadWaiter(key string, w *xreadWaiter) {
 
 // 唤醒等待者
 func notifyXReadWaiters(key string, newEntry streamEntry) {
+	fmt.Println("notifyXReadWaiters called for key:", key, "with new entry ID:", newEntry.id)
     xread.Lock()
     defer xread.Unlock()
 

@@ -406,7 +406,7 @@ func cmdXADD(conn net.Conn, args []string) {
 
 	// append the new stream entry
 	newEntry := streamEntry{
-        id:     id,
+        id:     newID,
         msTime: ms,
         seqNum: seq,
         fields: fields,
@@ -470,21 +470,26 @@ func cmdXRANGE(conn net.Conn, args []string) {
 }
 
 // XREAD STREAMS some_key 1526985054069-0
-func cmdREAD(conn net.Conn, args []string) {
+type keyResult struct {
+	key     string
+	entries []streamEntry
+}
+
+
+func cmdXREAD(conn net.Conn, args []string) {
     if len(args) < 4 {
         writeError(conn, "wrong number of arguments for 'xread' command")
         return
     }
 
-	blockMs := int64(0)
+	var blockMs int64 = -1
 	streamsIdx := 1
 
-	//
+	// parse arguments
 	i := 1
 	for i < len(args) {
 		switch strings.ToUpper(args[i]) {
-		//args := []string{"XREAD", "BLOCK", "5000", "STREAMS", "mystream", "0"}
-		case "BLOCK": 
+		case "BLOCK": //args := []string{"XREAD", "BLOCK", "5000", "STREAMS", "mystream", "0"}
 			if i+1 >= len(args) {
 				writeError(conn, "syntax error")
 				return
@@ -505,88 +510,106 @@ func cmdREAD(conn net.Conn, args []string) {
 		}
 	}
 
-	ParseStreams:
+ParseStreams:
 	// STREAMS 后面：一半是 keys，一半是 ids
 	if streamsIdx == -1 || (len(args)-streamsIdx-1)%2 != 0 {
         writeError(conn, "syntax error")
         return
     }
+
 	pairs := (len(args) - streamsIdx - 1) / 2
 	keys := args[streamsIdx+1 : streamsIdx+1+pairs]
 	ids  := args[streamsIdx+1+pairs:]
-	// if len(args) < 4 || strings.ToUpper(args[1]) != "STREAMS" || (len(args)-2)%2 != 0 {
-	// 	writeError(conn, "wrong number of arguments for 'xread' command")
-	// 	return
-	// }
-
-	// // parse key-ID pairs
-	// // XREAD [COUNT n] [BLOCK ms] STREAMS key1 key2 ... id1 id2 ...
-	// keys := args[2:len(args)/2+1]
-	// ids := args[len(args)/2+1:]
+	fmt.Println("keys:", keys, "ids:", ids)
+	
 
 	kv.RLock()
-	results := make(map[string][]streamEntry)
+	results := make([]keyResult, 0, len(keys))
 	for i, key := range keys {
 		id := ids[i]
 		ms, seq := parseStreamIDForRange(id, true)	
+
 		e, exists := kv.m[key]
 		if !exists || e.kind != kindStream {
+			results = append(results, keyResult{key: key, entries: nil})
 			continue // Skip non-existing keys or keys that are not streams
-		}	
+		}
+	
+		var found []streamEntry
 		for _, se := range e.streams {
 			if se.msTime > ms || (se.msTime == ms && se.seqNum > seq) {
-				results[key] = append(results[key], se)
+				found = append(found, se)
 			}
 		}
+		results = append(results, keyResult{key: key, entries: found})
 	}
     kv.RUnlock()
 
-	// If we have results, return them immediately
-	if len(results) > 0 {
-		writeArrayHeader(conn, len(results)) // Number of streams
-		for key, entries := range results {
-			writeArrayHeader(conn, 2) // Number of elements in this stream
-			writeBulk(conn, key) // Stream key
-
-			writeArrayHeader(conn, len(entries)) // Number of entries
-			for _, se := range entries {
-				writeArrayHeader(conn, 2) // Each entry is an array of [ID, fields]
-				writeBulkString(conn, se.id) // Write the ID as a RESP Bulk String
-
-				writeArrayHeader(conn, len(se.fields)*2) // Fields are key-value pairs
-				for field, value := range se.fields {
-					writeBulkString(conn, field) // Write field name
-					writeBulkString(conn, value) // Write field value
-				}
-			}
+	// 如果有结果 → 按请求顺序返回
+	hasData := false
+	for _, r := range results {
+		if len(r.entries) > 0 {
+			hasData = true
+			break
 		}
+	}
+	if hasData {
+		writeStreamResults(conn, results)
 		return
 	}
 
 	// If no results and BLOCK is specified, we need to wait
-	if blockMs == 0 {
+	if blockMs == -1 {
 		writeNullBulk(conn) // RESP Null Bulk String for no results and no blocking
 		return
 	}
 
 	//If no results & BLOCK > 0, we need to wait
+	timeout := time.Duration(blockMs) * time.Millisecond
 	for i, key := range keys {
 		waiter := &xreadWaiter{
 			conn: conn,
 			key: key,
 			lastID: ids[i],
-			timeout: time.Duration(blockMs) * time.Millisecond,
+			timeout: timeout,
 			done: make(chan struct{}),		
 		}
 		addXReadWaiter(key, waiter)
 
 		go func(w *xreadWaiter) {
-			select {
-			case <- w.done:
+			if blockMs == 0 {
+				<- w.done // wait indefinitely
 				return
-			case <- time.After(w.timeout):
+			}
+			select {
+			case <- w.done: // 被关闭时（close(w.done)，<-w.done 的地方都会立即收到信号
+				return
+			case <- time.After(w.timeout): //等timeout的时间
+				fmt.Println("XREAD timeout for key:", w.key)
 				writeNullBulk(w.conn) // RESP Null Bulk String for timeout
 			}
 		}(waiter)
 	}
 }
+
+
+func writeStreamResults(conn net.Conn, results []keyResult) {
+	writeArrayHeader(conn, len(results)) // Number of streams
+	for _, r := range results {
+		writeArrayHeader(conn, 2)    // [key, entries]
+		writeBulkString(conn, r.key) // stream key
+
+		writeArrayHeader(conn, len(r.entries)) // Number of entries
+		for _, se := range r.entries {
+			writeArrayHeader(conn, 2)    // [id, fields]
+			writeBulkString(conn, se.id) // entry ID
+
+			writeArrayHeader(conn, len(se.fields)*2) // fields
+			for field, value := range se.fields {
+				writeBulkString(conn, field)
+				writeBulkString(conn, value)
+			}
+		}
+	}
+}
+	
