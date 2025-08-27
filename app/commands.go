@@ -698,3 +698,19 @@ func cmdEXEC(conn net.Conn, args []string) {
 	// 清理事务状态
 	delete(transactions, conn)
 }
+
+func cmdDISCARD(conn net.Conn, args []string) {
+	if len(args) != 1 {
+		writeError(conn, "wrong number of arguments for 'discard' command")
+		return
+	}
+
+	state, ok := transactions[conn]
+	if !ok || !state.inMulti {
+		writeError(conn, "ERR DISCARD without MULTI")
+		return
+	}
+
+	delete(transactions, conn) // 清理事务状态
+	writeSimple(conn, "OK")
+}

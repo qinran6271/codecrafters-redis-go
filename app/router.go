@@ -25,6 +25,7 @@ func init() {
 	"INCR": cmdINCR,
 	"MULTI": cmdMULTI,
 	"EXEC": cmdEXEC,
+	"DISCARD": cmdDISCARD,
 	}
 }
     

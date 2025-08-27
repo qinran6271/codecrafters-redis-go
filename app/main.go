@@ -67,8 +67,8 @@ func handleConnection(conn net.Conn) {
 			}
 		}
 		
-		if cmd, ok := routs[cmd]; ok {
-			cmd(conn, args) // Call the command handler
+		if handler, ok := routs[cmd]; ok {
+			handler(conn, args) // Call the command handler
 		} else {
 			writeError(conn, fmt.Sprintf("unknown command '%s'", args[0]))
 		}
