@@ -650,9 +650,9 @@ func cmdINCR(conn net.Conn, args []string) {
 		return
 	}
 
-	intVal, err := strconv.Atoi(val)
+	intVal, err := strconv.Atoi(val) // Convert the string value to an integer
 	if err != nil {
-		writeError(conn, "value is not an integer or out of range")
+		writeError(conn, "ERR value is not an integer or out of range")
 		return
 	}
 	intVal++
