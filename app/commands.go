@@ -665,5 +665,9 @@ func cmdMULTI(conn net.Conn, args []string) {
 		writeError(conn, "wrong number of arguments for 'multi' command")
 		return
 	}
+	transactions[conn] = &transactionState{
+		inMulti: true,
+		queue:   make([][]string, 0),
+	}
 	writeSimple(conn, "OK")
 }

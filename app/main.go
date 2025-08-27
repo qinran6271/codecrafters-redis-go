@@ -55,8 +55,19 @@ func handleConnection(conn net.Conn) {
 			fmt.Println("Received empty command, skipping...")
 			continue  // Skip empty commands
 		} 
+
+		cmd := strings.ToUpper(args[0])
+
+		// === 新增：事务模式拦截 ===
+		if state, ok := transactions[conn]; ok && state.inMulti {
+			if cmd != "EXEC" && cmd != "DISCARD" && cmd != "MULTI" {
+				state.queue = append(state.queue, args)
+				writeSimple(conn, "QUEUED")
+				continue
+			}
+		}
 		
-		if cmd, ok := routs[strings.ToUpper(args[0])]; ok {
+		if cmd, ok := routs[cmd]; ok {
 			cmd(conn, args) // Call the command handler
 		} else {
 			writeError(conn, fmt.Sprintf("unknown command '%s'", args[0]))
