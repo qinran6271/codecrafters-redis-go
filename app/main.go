@@ -16,8 +16,6 @@ var _ = net.Listen
 var _ = os.Exit
 
 var role = "master" // "master" or "replica"
-var masterHost string 
-var masterPort int
 
 func main() {
 	// You can use print statements as follows for debugging, they'll be visible when running tests.
