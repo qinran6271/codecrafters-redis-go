@@ -724,9 +724,17 @@ func cmdINFO(conn net.Conn, args []string) {
 
 	section := strings.ToLower(args[1])
 	if section == "replication" {
-		info := "# Replication\nrole:master\n"
-		writeBulk(conn, info)
-	} else {
+		if role == "master" {
+			info := "# Replication\r\nrole:master\r\n"
+			writeBulkString(conn, info)
+		} else if role == "slave" {
+			info := fmt.Sprintf(
+				"# Replication\r\nrole:slave\r\nmaster_host:%s\r\nmaster_port:%d\r\n",
+				masterHost, masterPort,
+			)
+			writeBulkString(conn, info)
+		} 
+	}else {
 		writeBulkString(conn, "")
 	}
 }
