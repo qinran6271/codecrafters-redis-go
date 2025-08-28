@@ -714,3 +714,20 @@ func cmdDISCARD(conn net.Conn, args []string) {
 	delete(transactions, conn) // 清理事务状态
 	writeSimple(conn, "OK")
 }
+
+// ********************** replication ***********************
+func cmdINFO(conn net.Conn, args []string) {
+	if len(args) < 2{
+		writeError(conn, "wrong number of arguments for 'info' command")
+		return
+	}
+
+	section := strings.ToLower(args[1])
+	if section == "replication" {
+		info := "# Replication\nrole:master\n"
+		writeBulk(conn, info)
+	} else {
+		writeBulkString(conn, "")
+	}
+}
+	
