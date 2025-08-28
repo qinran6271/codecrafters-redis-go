@@ -7,6 +7,7 @@ import (
 	"strings" // For processing and parsing command strings.
 	"os"  // For handling errors and exiting the program gracefully.
 	"io" // For reading input from the client.
+	"flag" // For parsing command-line flags (like port number).
 )
 
 // Ensures gofmt doesn't remove the "net" and "os" imports in stage 1 (feel free to remove this!)
@@ -17,11 +18,15 @@ func main() {
 	// You can use print statements as follows for debugging, they'll be visible when running tests.
 	fmt.Println("Logs from your program will appear here!")
 
-	// Uncomment this block to pass the first stage
-	
-	l, err := net.Listen("tcp", "0.0.0.0:6379")
+	// 定义一个参数 port，默认 6379
+	port := flag.Int("port", 6379, "Port to listen on")
+	flag.Parse()
+
+	addr := fmt.Sprintf(":%d", *port)
+
+	l, err := net.Listen("tcp",addr)
 	if err != nil {
-		fmt.Println("Failed to bind to port 6379")
+		fmt.Println("Failed to bind to port", *port, ":", err.Error())
 		panic(err)
 	}
 	for {

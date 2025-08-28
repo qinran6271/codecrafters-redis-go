@@ -321,7 +321,7 @@ func cmdTYPE(conn net.Conn, args []string) {
 
 func cmdXADD(conn net.Conn, args []string) {
 	if len(args) < 5 || len(args)%2 != 1 {
-		fmt.Printf("args: %#v\n", args)
+		// fmt.Printf("args: %#v\n", args)
 		writeError(conn, "wrong number of arguments for 'xadd' command")
 		return
 	}
@@ -599,7 +599,7 @@ ParseStreams:
 			case <- w.done: // 被关闭时（close(w.done)，<-w.done 的地方都会立即收到信号
 				return
 			case <- time.After(w.timeout): //等timeout的时间
-				fmt.Println("XREAD timeout for key:", w.key)
+				// fmt.Println("XREAD timeout for key:", w.key)
 				writeNullBulk(w.conn) // RESP Null Bulk String for timeout
 			}
 		}(waiter)
