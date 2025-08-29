@@ -66,23 +66,32 @@ func connectToMaster(host string, port int, replicaPort int) {
 	fmt.Println("Connected to master at", addr)
 
 	// 第一步：发送 PING
-    fmt.Fprintf(conn, "*1\r\n$4\r\nPING\r\n")
+	pingMsg := "*1\r\n$4\r\nPING\r\n"
+    fmt.Fprint(conn, pingMsg)
 	readResponse(conn) // 应该是 "+PONG"
 
 	// 第二步：发送两次 REPLCONF 命令
 	// 1) REPLCONF listening-port <replicaPort>
-    msg := fmt.Sprintf("*3\r\n$8\r\nREPLCONF\r\n$14\r\nlistening-port\r\n$%d\r\n%d\r\n",
-        len(strconv.Itoa(replicaPort)), replicaPort)
-    fmt.Fprint(conn, msg)
-    readResponse(conn) // 应该是 "+OK
+	portStr := strconv.Itoa(replicaPort)
+	replconfPortMsg := fmt.Sprintf(
+		"*3\r\n$8\r\nREPLCONF\r\n$14\r\nlistening-port\r\n$%d\r\n%s\r\n",
+		len(portStr), portStr,
+	)
+	fmt.Fprint(conn, replconfPortMsg)
+	readResponse(conn) // 应该是 "+OK"
 	// 2) REPLCONF capa psync2
-    fmt.Fprintf(conn, "*3\r\n$8\r\nREPLCONF\r\n$4\r\ncapa\r\n$6\r\npsync2\r\n")
+	replconfCapaMsg := "*3\r\n$8\r\nREPLCONF\r\n$4\r\ncapa\r\n$6\r\npsync2\r\n"
+    fmt.Fprint(conn, replconfCapaMsg)
     readResponse(conn) // 应该是 "+OK"
 
 	// 第三步：发送 PSYNC <master_replid> -1
-	msg3 := fmt.Sprintf("*3\r\n$5\r\nPSYNC\r\n$40\r\n%s\r\n$2\r\n-1\r\n", masterReplId)
-    fmt.Fprint(conn, msg3)
-    readResponse(conn) // 下一关会检查 +FULLRESYNC ...
+	psyncMsg := "*3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n"
+	fmt.Fprint(conn, psyncMsg)
+	readResponse(conn)
+
+	// reply := readResponse(conn) // master 应该在后续阶段返回 +FULLRESYNC ...
+	// fmt.Println("Master replied:", reply)
+
 }
 
 
