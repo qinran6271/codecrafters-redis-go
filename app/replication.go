@@ -87,17 +87,22 @@ func connectToMaster(host string, port int, replicaPort int) {
 	// 第三步：发送 PSYNC <master_replid> -1
 	psyncMsg := "*3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n"
 	fmt.Fprint(conn, psyncMsg)
-	readResponse(conn)
 
-	// reply := readResponse(conn) // master 应该在后续阶段返回 +FULLRESYNC ...
-	// fmt.Println("Master replied:", reply)
+	reply := readResponse(conn) // master 应该在后续阶段返回 +FULLRESYNC ...
+	fmt.Println("Master replied:", reply)
 
 }
 
 
-func readResponse(conn net.Conn) {
+func readResponse(conn net.Conn) string {
     buf := make([]byte, 1024)
-    n, _ := conn.Read(buf)
-    fmt.Println("Master replied:", string(buf[:n]))
+    n, err := conn.Read(buf)
+    if err != nil {
+        fmt.Println("Error reading from master:", err)
+        return ""
+    }
+    reply := string(buf[:n])
+    fmt.Print("Master replied:", reply)
+    return reply
 }
 

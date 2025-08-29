@@ -729,4 +729,13 @@ func cmdINFO(conn net.Conn, args []string) {
 		writeBulkString(conn, "")
 	}
 }
+
+func cmdREPLCONF(conn net.Conn, args []string) {
+    writeSimple(conn, "OK")
+}
+
+func cmdPSYNC(conn net.Conn, args []string) {
+    reply := fmt.Sprintf("+FULLRESYNC %s 0\r\n$0\r\n\r\n", masterReplId)
+    fmt.Fprint(conn, reply)
+}
 	
