@@ -7,6 +7,7 @@ import (
     "strings"
 	"os"
 	"net"
+	"encoding/base64"
 )
 
 const replidChars = "abcdefghijklmnopqrstuvwxyz0123456789"
@@ -15,6 +16,17 @@ var masterReplId = generateReplId()
 var masterReplOffset = 0
 var masterHost string
 var masterPort int
+
+var emptyRdbDump []byte
+func init() {
+    // 这是官方提供的空 RDB 文件的 base64
+    data := "UkVESVMwMDEx+glyZWRpcy12ZXIFNy4yLjD6CnJlZGlzLWJpdHPAQPoFY3RpbWXCbQi8ZfoIdXNlZC1tZW3CsMQQAPoIYW9mLWJhc2XAAP/wbjv+wP9aog=="
+    decoded, err := base64.StdEncoding.DecodeString(data)
+    if err != nil {
+        panic(err)
+    }
+    emptyRdbDump = decoded
+}
 
 func generateReplId() string {
     b := make([]byte, 40)

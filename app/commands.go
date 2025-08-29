@@ -735,7 +735,12 @@ func cmdREPLCONF(conn net.Conn, args []string) {
 }
 
 func cmdPSYNC(conn net.Conn, args []string) {
-    reply := fmt.Sprintf("+FULLRESYNC %s 0\r\n$0\r\n\r\n", masterReplId)
+	// return +FULLRESYNC <replid> <offset>\r\n$<len>\r\n<payload>\r\n
+    reply := fmt.Sprintf("+FULLRESYNC %s %d\r\n", masterReplId, masterReplOffset)
     fmt.Fprint(conn, reply)
+
+	// Sent the current database state (RDB file)
+    fmt.Fprintf(conn, "$%d\r\n", len(emptyRdbDump))
+    conn.Write(emptyRdbDump)
 }
 	
