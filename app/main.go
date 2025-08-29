@@ -32,7 +32,7 @@ func main() {
 		role = "slave"
 		parseReplicaof(*replicaof)
 		// 启动一个 goroutine 去连接 master
-		go connectToMaster(masterHost, masterPort)
+		go connectToMaster(masterHost, masterPort, *port)
 	}
 
 	addr := fmt.Sprintf(":%d", *port)

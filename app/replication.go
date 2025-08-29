@@ -73,7 +73,7 @@ func connectToMaster(host string, port int, replicaPort int) {
 	// 1) REPLCONF listening-port <replicaPort>
     msg := fmt.Sprintf("*3\r\n$8\r\nREPLCONF\r\n$14\r\nlistening-port\r\n$%d\r\n%d\r\n",
         len(strconv.Itoa(replicaPort)), replicaPort)
-    fmt.Fprintf(conn, msg)
+    fmt.Fprint(conn, msg)
     readResponse(conn) // 应该是 "+OK
 	// 2) REPLCONF capa psync2
     fmt.Fprintf(conn, "*3\r\n$8\r\nREPLCONF\r\n$4\r\ncapa\r\n$6\r\npsync2\r\n")
@@ -81,7 +81,7 @@ func connectToMaster(host string, port int, replicaPort int) {
 
 	// 第三步：发送 PSYNC <master_replid> -1
 	msg3 := fmt.Sprintf("*3\r\n$5\r\nPSYNC\r\n$40\r\n%s\r\n$2\r\n-1\r\n", masterReplId)
-    fmt.Fprintf(conn, msg3)
+    fmt.Fprint(conn, msg3)
     readResponse(conn) // 下一关会检查 +FULLRESYNC ...
 }
 
