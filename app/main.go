@@ -8,7 +8,7 @@ import (
 	"os"  // For handling errors and exiting the program gracefully.
 	"io" // For reading input from the client.
 	"flag" // For parsing command-line flags (like port number).
-	"strconv" // For converting strings to integers (like port number).
+	// "strconv" // For converting strings to integers (like port number).
 )
 
 // Ensures gofmt doesn't remove the "net" and "os" imports in stage 1 (feel free to remove this!)
@@ -30,18 +30,9 @@ func main() {
 	// ./your_program.sh --port 6380 --replicaof "localhost 6379"
 	if *replicaof != "" {
 		role = "slave"
-		parts := strings.Split(*replicaof, " ")
-		if len(parts) != 2 {
-			fmt.Println("Invalid --replicaof argument, must be 'host port'")
-			os.Exit(1)
-		}
-		 masterHost = parts[0] // e.g. "localhost"
-		 var err error
-		 masterPort, err = strconv.Atoi(parts[1]) // e.g. 6379
-		 if err != nil {
-			fmt.Println("Invalid port in --replicaof argument:", parts[1])
-			os.Exit(1)
-		 }
+		parseReplicaof(*replicaof)
+		// 启动一个 goroutine 去连接 master
+		go connectToMaster(masterHost, masterPort)
 	}
 
 	addr := fmt.Sprintf(":%d", *port)
