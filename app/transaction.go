@@ -1,7 +1,5 @@
 package main
-import (
-	"net"
-)
+
 // transaction.go 或 global.go 都可以
 
 // 事务状态
@@ -11,4 +9,4 @@ type transactionState struct {
 }
 
 // 每个连接一个事务状态
-var transactions = make(map[net.Conn]*transactionState)
+// var transactions = make(map[net.Conn]*transactionState)

@@ -17,6 +17,8 @@ var masterReplOffset = 0
 var masterHost string
 var masterPort int
 
+var replicaConns []net.Conn //保存所有已连接的 replica
+
 var emptyRdbDump []byte
 func init() {
     // 这是官方提供的空 RDB 文件的 base64
@@ -70,13 +72,21 @@ func GetReplicationInfo() string {
 
 func connectToMaster(host string, port int, replicaPort int) {
 	addr := fmt.Sprintf("%s:%d", host, port)
+
+	// 和 master 建立 TCP 连接
 	conn, err := net.Dial("tcp", addr)
 	if err != nil {
 		fmt.Println("Failed to connect to master:", err)
 		return
 	}
 	fmt.Println("Connected to master at", addr)
+	// 进行握手
+	doHandshakeWithMaster(conn, replicaPort)
 
+
+}
+
+func doHandshakeWithMaster(conn net.Conn, replicaPort int) {
 	// 第一步：发送 PING
 	pingMsg := "*1\r\n$4\r\nPING\r\n"
     fmt.Fprint(conn, pingMsg)
@@ -102,7 +112,6 @@ func connectToMaster(host string, port int, replicaPort int) {
 
 	reply := readResponse(conn) // master 应该在后续阶段返回 +FULLRESYNC ...
 	fmt.Println("Master replied:", reply)
-
 }
 
 
@@ -118,3 +127,26 @@ func readResponse(conn net.Conn) string {
     return reply
 }
 
+// 把命令转发给所有已连接的 replicas
+func propagateToReplicas(args []string) {
+	resp := buildRESPArray(args) // 把命令转成 RESP 格式
+
+	// 遍历所有 replica 连接，写出去
+	for _, rconn := range replicaConns {
+		_, err := fmt.Fprint(rconn, resp)
+		if err != nil {
+			fmt.Println("Error propagating to replica:", err)
+		}
+	}
+}
+
+// 把 args 转成 RESP2 Array 格式，比如 ["SET", "foo", "bar"]
+// → *3\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$3\r\nbar\r\n
+func buildRESPArray(args []string) string {
+    var sb strings.Builder
+    sb.WriteString(fmt.Sprintf("*%d\r\n", len(args)))
+    for _, arg := range args {
+        sb.WriteString(fmt.Sprintf("$%d\r\n%s\r\n", len(arg), arg))
+    }
+    return sb.String()
+}

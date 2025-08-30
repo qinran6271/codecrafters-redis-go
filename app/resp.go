@@ -173,4 +173,8 @@ func writeArrayHeader(conn net.Conn, n int) {
     fmt.Fprintf(conn, "*%d\r\n", n)
 }
 
+func writeNullArray(conn net.Conn) {
+    fmt.Fprint(conn, "*-1\r\n")
+}
+
 

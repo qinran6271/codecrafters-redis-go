@@ -9,28 +9,32 @@ import (
 )
 
 // **********************basic commands***********************
+func replied(isWrite bool) CommandResult {
+	return CommandResult{IsWrite: isWrite, Replied: true}
+}
 
-func cmdPING(conn net.Conn, args []string) {
+func cmdPING(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
 	if len(args) == 1 {
 		writeSimple(conn, "PONG")
-		return 
+	}else{
+		writeBulk(conn, args[1])
 	}
-	writeBulk(conn, args[1])
-	
+	return replied(false)
 }
 
-func cmdECHO(conn net.Conn, args []string) {
+func cmdECHO(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
 	if len(args) < 2 {
 		writeError(conn, "wrong number of arguments for 'echo' command")
-		return
+		return replied(false)
 	}
 	writeBulk(conn, args[1])
+	return replied(false)
 }
 
-func cmdSET(conn net.Conn, args []string) {
+func cmdSET(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
 	if len(args) < 3 {
 		writeError(conn, "wrong number of arguments for 'set' command")
-		return
+		return replied(false)
 	}
 	key, val := args[1], args[2]
 
@@ -41,29 +45,30 @@ func cmdSET(conn net.Conn, args []string) {
 		case "PX":
 			if seenPX || i+1 >= len(args) {
 				writeError(conn, "wrong number of arguments for 'set' command")
-				return
+				return replied(false)
 			}
 			ms, err := strconv.ParseInt(args[i+1], 10, 64)
 			if err != nil || ms <= 0{
 				writeError(conn, "invalid value for PX option")
-				return
+				return replied(false)
 			}
 			pxMs = ms
 			seenPX = true
 			i += 2 // Skip the next argument as it's the value for PX
 		default:
 			writeError(conn, fmt.Sprintf("unknown option '%s' for 'set' command", args[i]))
-			return	
+			return replied(false)
 		}
 	}
 	setKey(key, val, pxMs)
 	writeSimple(conn, "OK")
+	return replied(true)
 }
 
-func cmdGET(conn net.Conn, args []string) {
+func cmdGET(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
 	if len(args) != 2 {
 		writeError(conn, "wrong number of arguments for 'get' command")
-		return
+		return replied(false)
 	}
 	
 	if val, exists := getKey(args[1]); exists {
@@ -71,14 +76,15 @@ func cmdGET(conn net.Conn, args []string) {
 	} else {
 		writeNullBulk(conn) // RESP Null Bulk String for non-existing key
 	}		
+	return replied(false)
 }
 
 // **********************lists commands***********************
 
-func cmdRPUSH(conn net.Conn, args []string) {
+func cmdRPUSH(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
 	if len(args) < 3 {
 		writeError(conn, "wrong number of arguments for 'rpush' command")
-		return
+		return replied(false)
 	}
 	key := args[1]
 	values := args[2:]
@@ -87,20 +93,21 @@ func cmdRPUSH(conn net.Conn, args []string) {
 	if err != nil {
 		if err == ErrWrongType {
 			writeError(conn, err.Error())
-			return
+			return replied(false)
 		}
 		writeError(conn, "internal error")
-		return
+		return replied(false)
 	}
 	writeInteger(conn, int64(newLen))
+	return replied(true)
 }
 
 
 
-func cmdLRANGE(conn net.Conn, args []string) {
+func cmdLRANGE(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
 	if len(args) < 4 {
 		writeError(conn, "wrong number of arguments for 'lrange' command")
-		return
+		return replied(false)
 	}
 	key := args[1]
 	
@@ -108,30 +115,31 @@ func cmdLRANGE(conn net.Conn, args []string) {
 	end, err2 := strconv.Atoi(args[3])
 	if err1 != nil || err2 != nil {
 		writeError(conn, "invalid start index for 'lrange' command")
-		return
+		return replied(false)
 	}
 
 	items, err := lrangeKey(key, start, end)
 	if err != nil {
 		if err == ErrWrongType {
 			writeError(conn, err.Error())
-			return
+			return replied(false)
 		} else {
 			writeError(conn, "internal error")
 		}
-		return
+		return replied(false)
 	}
 
 	fmt.Fprintf(conn, "*%d\r\n", len(items)) // RESP Array with length
 	for _, item := range items {
 		writeBulkString(conn, item) // Write each item as a RESP Bulk String
 	}
+	return replied(false)
 }
 
-func cmdLPUSH(conn net.Conn, args []string) {
+func cmdLPUSH(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
 	if len(args) < 3 {
 		writeError(conn, "wrong number of arguments for 'lpush' command")
-		return
+		return replied(false)
 	}
 	key := args[1]
 	values := args[2:]
@@ -143,15 +151,16 @@ func cmdLPUSH(conn net.Conn, args []string) {
 		} else {
 			writeError(conn, "internal error")
 		}
-		return
+		return replied(false)
 	}
 	writeInteger(conn, int64(newLen))
+	return replied(true)
 }
 
-func cmdLLEN(conn net.Conn, args []string) {
+func cmdLLEN(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
 	if len(args) != 2 {
 		writeError(conn, "wrong number of arguments for 'llen' command")
-		return
+		return replied(false)
 	}
 	
 	key := args[1]
@@ -164,27 +173,32 @@ func cmdLLEN(conn net.Conn, args []string) {
 		} else {
 			writeError(conn, "internal error")// RESP Null Bulk String for non-existing key
 		}
-		return
+		return replied(false)
 	}
 
 	writeInteger(conn, int64(length)) // Return the length of the list
+	return replied(false)
 }
 
-func cmdLPOP(conn net.Conn, args []string) {
+// 从列表（list）的 左边（头部）移除并返回元素
+// 两种调用方式：
+// 1) LPOP key → 返回被移除的元素
+// 2) LPOP key count → 返回被移除的元素列表
+func cmdLPOP(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
 	if len(args) != 2  && len(args) != 3 {
 		writeError(conn, "wrong number of arguments for 'lpop' command")
-		return
+		return replied(false)
 	}
 
 	key := args[1]
 
-	single := (len(args) == 2)
+	single := (len(args) == 2) // 判断是否是 LPOP key 还是 LPOP key count
 	count := 1
 	if !single {
 		n, err := strconv.Atoi(args[2])
 		if err != nil || n <= 0 {
 			writeError(conn, "ERR value is not an integer or out of range")
-			return
+			return replied(false)
 		}
 		count = n
 	}
@@ -196,36 +210,35 @@ func cmdLPOP(conn net.Conn, args []string) {
 		} else {
 			writeError(conn, "internal error")
 		}
-		return
+		return replied(false)
 	}
 
 	if single {
 		if len(items) == 0 {
 			writeNullBulk(conn) // RESP Null Bulk String for empty list
-			return
 		} else {
 			writeBulkString(conn, items[0]) // Write the first item as a RESP Bulk String
-			return
+		}
+	} else{
+		writeArrayHeader(conn, len(items)) // RESP Array with length
+		for _, item := range items {
+			writeBulkString(conn, item) // Write each item as a RESP Bulk String
 		}
 	}
-
-	writeArrayHeader(conn, len(items)) // RESP Array with length
-	for _, item := range items {
-		writeBulkString(conn, item) // Write each item as a RESP Bulk String
-	}
+	return replied(true)
 	
 }
 
-func cmdBLPOP(conn net.Conn, args []string) {
+func cmdBLPOP(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
 	if len(args) < 3 {
 		writeError(conn, "wrong number of arguments for 'blpop' command")
-		return
+		return replied(false)
 	}
 	key := args[1]
 	to, err := strconv.ParseFloat(args[2], 64)
 	if err != nil || to < 0 {
 		writeError(conn, "invalid timeout value for 'blpop' command")
-		return
+		return replied(false)
 	}
 
 	// no blocking if key exists
@@ -233,10 +246,10 @@ func cmdBLPOP(conn net.Conn, args []string) {
 	if err != nil {
 		if err == ErrWrongType {
 			writeError(conn, err.Error())
-			return
+			return replied(false)
 		} else {
 			writeError(conn, "internal error")
-			return
+			return replied(false)
 		}
 	}
 
@@ -244,7 +257,7 @@ func cmdBLPOP(conn net.Conn, args []string) {
 		writeArrayHeader(conn, 2) // RESP Array with length 2
 		writeBulkString(conn, key) // Write the key as a RESP Bulk String
 		writeBulkString(conn, items[0]) // Write the first item as a RESP Bulk String
-		return
+		return replied(false)
 	}
 
 	// If no items were popped, we need to block
@@ -258,7 +271,7 @@ func cmdBLPOP(conn net.Conn, args []string) {
 		writeArrayHeader(conn, 2) // RESP Array with length 2
 		writeBulkString(conn, res.key) // Write the key as a RESP Bulk String
 		writeBulkString(conn, res.value) // Write the value as a RESP Bulk String
-		return
+		return replied(false)
 	}
 
 	// wait with timeout
@@ -271,15 +284,16 @@ func cmdBLPOP(conn net.Conn, args []string) {
 	case <-time.After(time.Duration(to * float64(time.Second))):
 		fmt.Println("BLPOP timeout for key:", key)
 		removeWaiter(key, waiter) // Remove the waiter if timeout occurs
-		writeNullBulk(conn) // RESP Null Bulk String for timeout
+		writeNullArray(conn) // RESP Null Bulk String for timeout
 	}
+	return replied(false)
 }
 
 // **********************Stream commands***********************
-func cmdTYPE(conn net.Conn, args []string) {
+func cmdTYPE(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
 	if len(args) != 2 {
 		writeError(conn, "wrong number of arguments for 'type' command")
-		return
+		return replied(false)
 	}
 	
 	key := args[1]
@@ -289,7 +303,7 @@ func cmdTYPE(conn net.Conn, args []string) {
 	kv.RUnlock()
 	if !exists {
 		writeSimple(conn, "none") // RESP Simple String for non-existing key
-		return
+		return replied(false)
 	}
 
 	switch e.kind {
@@ -309,6 +323,7 @@ func cmdTYPE(conn net.Conn, args []string) {
 	default:
 		writeError(conn, "unknown type") // RESP Error for unknown type
 	}
+	return replied(false)
 }
 
 
@@ -318,12 +333,11 @@ func cmdTYPE(conn net.Conn, args []string) {
 // "0-1"
 // $ redis-cli XADD stream_key 1526919030474-0 temperature 36 humidity 95 
 // "1526919030474-0" # (ID of the entry created)
-
-func cmdXADD(conn net.Conn, args []string) {
+func cmdXADD(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
 	if len(args) < 5 || len(args)%2 != 1 {
 		// fmt.Printf("args: %#v\n", args)
 		writeError(conn, "wrong number of arguments for 'xadd' command")
-		return
+		return replied(false)
 	}
 	key := args[1]
 	id := args[2] // The ID of the entry, can be "0-0
@@ -332,7 +346,7 @@ func cmdXADD(conn net.Conn, args []string) {
 	ms, seq, autoSeq, autoTime, err := parseStreamID(id)
 	if err != nil {
 		writeError(conn, err.Error())
-		return
+		return replied(false)
 	}
 
 	// parse field-value pairs
@@ -354,7 +368,7 @@ func cmdXADD(conn net.Conn, args []string) {
 	}else{
 		if e.kind != kindStream {
 			writeError(conn, ErrWrongType.Error())
-			return
+			return replied(false)
 		}
 	}
 
@@ -399,7 +413,7 @@ func cmdXADD(conn net.Conn, args []string) {
 	// Validate the stream ID
 	if err := validateStreamID(ms, seq, e.streams); err != nil {
 		writeError(conn, err.Error())
-		return
+		return replied(false)
 	}
 	
 	newID := fmt.Sprintf("%d-%d", ms, seq)
@@ -417,15 +431,17 @@ func cmdXADD(conn net.Conn, args []string) {
 	writeBulk(conn, newID ) // Write the ID of the new entry as a RESP Bulk String
 	notifyXReadWaiters(key, newEntry)
 
+	return replied(true)
+
 }
 
 // It takes two arguments: start and end. 
 // The command returns all entries in the stream with IDs between the start and end IDs.
 //$ redis-cli XRANGE some_key 1526985054069 1526985054079
-func cmdXRANGE(conn net.Conn, args []string) {
+func cmdXRANGE(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
 	if len(args) != 4 {
 		writeError(conn, "wrong number of arguments for 'xrange' command")
-		return
+		return replied(false)
 	}
 	key := args[1]
 	startID := args[2]
@@ -438,7 +454,7 @@ func cmdXRANGE(conn net.Conn, args []string) {
 
 	if !exists {
 		writeArrayHeader(conn, 0) // RESP Array with length 0 for non-existing key
-		return
+		return replied(false)
 	}
 
 	// parse startID and endID
@@ -466,7 +482,7 @@ func cmdXRANGE(conn net.Conn, args []string) {
 			writeBulkString(conn, value) // Write field value
 		}
 	}
-
+	return replied(false)
 }
 
 // XREAD STREAMS some_key 1526985054069-0
@@ -476,10 +492,10 @@ type keyResult struct {
 }
 
 
-func cmdXREAD(conn net.Conn, args []string) {
+func cmdXREAD(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
     if len(args) < 4 {
         writeError(conn, "wrong number of arguments for 'xread' command")
-        return
+        return replied(false)
     }
 
 	var blockMs int64 = -1
@@ -492,12 +508,12 @@ func cmdXREAD(conn net.Conn, args []string) {
 		case "BLOCK": //args := []string{"XREAD", "BLOCK", "5000", "STREAMS", "mystream", "0"}
 			if i+1 >= len(args) {
 				writeError(conn, "syntax error")
-				return
+				return replied(false)
 			}
 			ms, err := strconv.ParseInt(args[i+1], 10, 64)
 			if err != nil {
 				writeError(conn, "invalid block timeout")
-				return
+				return replied(false)
 			}
 			blockMs = ms
 			i += 2 // Skip the next argument as it's the value for BLOCK
@@ -514,7 +530,7 @@ ParseStreams:
 	// STREAMS 后面：一半是 keys，一半是 ids
 	if streamsIdx == -1 || (len(args)-streamsIdx-1)%2 != 0 {
         writeError(conn, "syntax error")
-        return
+        return replied(false)
     }
 
 	pairs := (len(args) - streamsIdx - 1) / 2
@@ -569,13 +585,13 @@ ParseStreams:
 	}
 	if hasData {
 		writeStreamResults(conn, results)
-		return
+		return replied(false)
 	}
 
 	// If no results and BLOCK is specified, we need to wait
 	if blockMs == -1 {
-		writeNullBulk(conn) // RESP Null Bulk String for no results and no blocking
-		return
+		writeNullArray(conn) // RESP Null Bulk String for no results and no blocking
+		return replied(false)
 	}
 
 	//If no results & BLOCK > 0, we need to wait
@@ -600,10 +616,11 @@ ParseStreams:
 				return
 			case <- time.After(w.timeout): //等timeout的时间
 				// fmt.Println("XREAD timeout for key:", w.key)
-				writeNullBulk(w.conn) // RESP Null Bulk String for timeout
+				writeNullArray(w.conn) // RESP Null Bulk String for timeout
 			}
 		}(waiter)
 	}
+	return replied(false)
 }
 
 
@@ -635,10 +652,10 @@ func writeStreamResults(conn net.Conn, results []keyResult) {
 // 3. Key exists but doesn't have a numerical value (later stages)
 
 //ex. redis-cli SET foo 5
-func cmdINCR(conn net.Conn, args []string) {
+func cmdINCR(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
 	if len(args) != 2 {
 		writeError(conn, "wrong number of arguments for 'incr' command")
-		return
+		return replied(false)
 	}
 
 	key := args[1]
@@ -647,79 +664,86 @@ func cmdINCR(conn net.Conn, args []string) {
 	if !exists {
 		setKey(key, "1", 0)
 		writeInteger(conn, 1)
-		return
+		return replied(true)
 	}
 
 	intVal, err := strconv.Atoi(val) // Convert the string value to an integer
 	if err != nil {
 		writeError(conn, "ERR value is not an integer or out of range")
-		return
+		return replied(false)
 	}
 	intVal++
 	setKey(key, strconv.Itoa(intVal), 0)
 	writeInteger(conn, int64(intVal))
+	return replied(true)
 }
 
-func cmdMULTI(conn net.Conn, args []string) {
+func cmdMULTI(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
 	if len(args) != 1 {
 		writeError(conn, "wrong number of arguments for 'multi' command")
-		return
+		return replied(false)
 	}
-	transactions[conn] = &transactionState{
-		inMulti: true,
-		queue:   make([][]string, 0),
-	}
+
+	ctx.tx.inMulti = true
+	ctx.tx.queue = make([][]string, 0)
+
 	writeSimple(conn, "OK")
+	return replied(false)
 }
 
-func cmdEXEC(conn net.Conn, args []string) {
+func cmdEXEC(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
 	if len(args) != 1 {
 		writeError(conn, "wrong number of arguments for 'exec' command")
-		return
+		return replied(false)
 	}
 
-	state, ok := transactions[conn]
-	if !ok || !state.inMulti {
+	if !ctx.tx.inMulti {
 		writeError(conn, "ERR EXEC without MULTI")
-		return
+		return replied(false)
 	}
 
-	writeArrayHeader(conn, len(state.queue)) // RESP Array with length of queued commands
+	writeArrayHeader(conn, len(ctx.tx.queue)) // RESP Array with length of queued commands
 	
-	for _, queued := range state.queue {
+	for _, queued := range ctx.tx.queue {
 		cmd := strings.ToUpper(queued[0])
 		if handler, ok := routs[cmd]; ok {
-			handler(conn, queued) // 真正执行命令，把结果写回 conn
+			handler(conn, queued, ctx) // 真正执行命令，把结果写回 conn
 		} else {
 			writeError(conn, "unknown command '"+queued[0]+"'")
 		}
 	}
 
 	// 清理事务状态
-	delete(transactions, conn)
+	ctx.tx.inMulti = false
+	ctx.tx.queue = nil
+	return replied(false)
 }
 
-func cmdDISCARD(conn net.Conn, args []string) {
+// 放弃事务，清理状态
+func cmdDISCARD(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
 	if len(args) != 1 {
 		writeError(conn, "wrong number of arguments for 'discard' command")
-		return
+		return replied(false)
 	}
 
-	state, ok := transactions[conn]
-	if !ok || !state.inMulti {
+	if !ctx.tx.inMulti {
 		writeError(conn, "ERR DISCARD without MULTI")
-		return
+		return replied(false)
 	}
 
-	delete(transactions, conn) // 清理事务状态
+	// 丢弃队列
+	ctx.tx.inMulti = false
+	ctx.tx.queue = nil
+
 	writeSimple(conn, "OK")
+	return replied(false)
 }
 
 // ********************** replication ***********************
-func cmdINFO(conn net.Conn, args []string) {
+func cmdINFO(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
 	if len(args) < 2{
 		writeError(conn, "wrong number of arguments for 'info' command")
-		return
+		return replied(false)
 	}
 
 	section := strings.ToLower(args[1])
@@ -728,19 +752,76 @@ func cmdINFO(conn net.Conn, args []string) {
 	}else {
 		writeBulkString(conn, "")
 	}
+	return replied(false)
 }
 
-func cmdREPLCONF(conn net.Conn, args []string) {
+func cmdREPLCONF(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
+	if len(args) < 3 {
+		writeError(conn, "ERR wrong number of arguments for 'REPLCONF'")
+		return replied(false)
+	}
+
+	// 标记这个连接为 replica
+	ctx.isReplica = true
+
     writeSimple(conn, "OK")
+	return replied(false)
 }
 
-func cmdPSYNC(conn net.Conn, args []string) {
-	// return +FULLRESYNC <replid> <offset>\r\n$<len>\r\n<payload>\r\n
-    reply := fmt.Sprintf("+FULLRESYNC %s %d\r\n", masterReplId, masterReplOffset)
-    fmt.Fprint(conn, reply)
+// func cmdPSYNC(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
+// 	if len(args) != 3 {
+// 		writeError(conn, "ERR wrong number of arguments for 'psync' command")
+// 		return replied(false)
+// 	}
 
-	// Sent the current database state (RDB file)
-    fmt.Fprintf(conn, "$%d\r\n", len(emptyRdbDump))
-    conn.Write(emptyRdbDump)
+// 	// 标记这个连接是 replica
+// 	ctx.isReplica = true
+
+// 	// args[1] = runid, args[2] = offset
+// 	// runid := args[1]
+// 	offsetStr := args[2]
+
+
+// 	// parse offset
+// 	_, err := strconv.ParseInt(offsetStr, 10, 64)
+// 	if err != nil {
+// 		writeError(conn, "ERR invalid replication offset")
+// 		return replied(false)
+// 	}
+
+// 	// 回复 FULLRESYNC，带上 master 的 replid 和 offset(从 0 开始)
+// 	reply := fmt.Sprintf("+FULLRESYNC %s %d\r\n", masterReplId, masterReplOffset)
+// 	fmt.Fprint(conn, reply)
+
+// 	// 把这个连接登记为 replica，用来后续 propagate
+// 	replicaConns = append(replicaConns, conn)
+// 	return replied(false) // PSYNC 本身不是写命令，不需要传播
+// }
+func cmdPSYNC(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
+	if len(args) != 3 {
+		writeError(conn, "ERR wrong number of arguments for 'psync' command")
+		return replied(false)
+	}
+
+	// 标记当前连接为 replica
+	ctx.isReplica = true
+
+	// PSYNC ? -1
+	// 第一次全量同步：返回 FULLRESYNC
+	reply := fmt.Sprintf("+FULLRESYNC %s %d\r\n", masterReplId, masterReplOffset)
+	fmt.Fprint(conn, reply)
+
+	// 发送空 RDB 文件
+	fmt.Fprintf(conn, "$%d\r\n", len(emptyRdbDump))
+	_, err := conn.Write(emptyRdbDump) // emptyRdbDump 已经自带结尾 \r\n
+	if err != nil {
+		fmt.Println("failed to send RDB:", err)
+		return replied(false)
+	}
+
+	// 把这个连接注册为 replica（用于后续 propagate）
+	replicaConns = append(replicaConns, conn)
+
+	// PSYNC 本身不是写命令，不需要传播
+	return replied(false)
 }
-	

@@ -75,22 +75,26 @@ func handleConnection(conn net.Conn) {
 		} 
 
 		cmd := strings.ToUpper(args[0])
+		ctx := getClientCtx(conn)
 
-		// === 新增：事务模式拦截 ===
-		if state, ok := transactions[conn]; ok && state.inMulti {
-			if cmd != "EXEC" && cmd != "DISCARD" && cmd != "MULTI" {
-				state.queue = append(state.queue, args)
-				writeSimple(conn, "QUEUED")
-				continue
-			}
+		// === 事务模式拦截 ===
+		if ctx.tx.inMulti && cmd != "EXEC" && cmd != "DISCARD" && cmd != "MULTI" {
+			ctx.tx.queue = append(ctx.tx.queue, args)
+			writeSimple(conn, "QUEUED")
+			continue
 		}
 		
+		// === 正常执行命令 ===
 		if handler, ok := routs[cmd]; ok {
-			handler(conn, args) // Call the command handler
+			res := handler(conn, args, ctx) // Call the command handler
+			if role == "master"  && res.IsWrite && !ctx.isReplica {
+				 propagateToReplicas(args)
+			}
+
 		} else {
 			writeError(conn, fmt.Sprintf("unknown command '%s'", args[0]))
 		}
-		fmt.Printf("args: %#v\n", args) // Debug 输出
+		fmt.Printf("args: %#v\n", args) // Debug 
 	}
 
 }

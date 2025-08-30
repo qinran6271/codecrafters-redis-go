@@ -19,7 +19,11 @@ import (
 // │      }
 // │
 // └── RWMutex (保证多 goroutine 并发安全)
-
+// 命令执行结果
+type CommandResult struct {
+	IsWrite bool // 是否修改了数据（master需要propagate）
+	Replied bool // handler内部是否已经回复客户端， 默认false
+}
 
 type valueKind int // Define a new type for value kinds based with constants
 
@@ -28,8 +32,6 @@ const (
 	kindList // index 1, list type
 	kindStream // index 2, stream type
 )
-
-
 
 type streamEntry struct {
 	id string // Unique identifier for the stream entry

@@ -4,10 +4,10 @@ import (
 	"net"
 )
 
-var routs map[string]func(net.Conn, []string)
+var routs map[string]func(net.Conn, []string, *ClientCtx) CommandResult // bool 表示是否是写命令传播给replica
 
 func init() {
-	routs = map[string]func(net.Conn, []string){
+	routs = map[string]func(net.Conn, []string, *ClientCtx) CommandResult {
 	"PING": cmdPING,
 	"ECHO": cmdECHO,
 	"SET":  cmdSET,
