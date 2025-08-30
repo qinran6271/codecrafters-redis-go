@@ -768,41 +768,9 @@ func cmdREPLCONF(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
 	return replied(false)
 }
 
-// func cmdPSYNC(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
-// 	if len(args) != 3 {
-// 		writeError(conn, "ERR wrong number of arguments for 'psync' command")
-// 		return replied(false)
-// 	}
-
-// 	// 标记这个连接是 replica
-// 	ctx.isReplica = true
-
-// 	// args[1] = runid, args[2] = offset
-// 	// runid := args[1]
-// 	offsetStr := args[2]
-
-
-// 	// parse offset
-// 	_, err := strconv.ParseInt(offsetStr, 10, 64)
-// 	if err != nil {
-// 		writeError(conn, "ERR invalid replication offset")
-// 		return replied(false)
-// 	}
-
-// 	// 回复 FULLRESYNC，带上 master 的 replid 和 offset(从 0 开始)
-// 	reply := fmt.Sprintf("+FULLRESYNC %s %d\r\n", masterReplId, masterReplOffset)
-// 	fmt.Fprint(conn, reply)
-
-// 	// 把这个连接登记为 replica，用来后续 propagate
-// 	replicaConns = append(replicaConns, conn)
-// 	return replied(false) // PSYNC 本身不是写命令，不需要传播
-// }
+// 客户端发送（replica） PSYNC <replid> <offset>
+// ex. PSYNC ? -1
 func cmdPSYNC(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
-	if len(args) != 3 {
-		writeError(conn, "ERR wrong number of arguments for 'psync' command")
-		return replied(false)
-	}
-
 	// 标记当前连接为 replica
 	ctx.isReplica = true
 
@@ -820,7 +788,7 @@ func cmdPSYNC(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
 	}
 
 	// 把这个连接注册为 replica（用于后续 propagate）
-	replicaConns = append(replicaConns, conn)
+	addReplicaConn(conn)
 
 	// PSYNC 本身不是写命令，不需要传播
 	return replied(false)

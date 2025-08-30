@@ -8,6 +8,7 @@ import (
 	"os"
 	"net"
 	"encoding/base64"
+	"sync"
 )
 
 const replidChars = "abcdefghijklmnopqrstuvwxyz0123456789"
@@ -17,7 +18,10 @@ var masterReplOffset = 0
 var masterHost string
 var masterPort int
 
-var replicaConns []net.Conn //保存所有已连接的 replica
+var (
+    replicaConns   []net.Conn // 保存所有 replica 的连接
+    replicaConnsMu sync.RWMutex // 读写分离：读多写少时效率更高
+)
 
 var emptyRdbDump []byte
 func init() {
@@ -127,26 +131,58 @@ func readResponse(conn net.Conn) string {
     return reply
 }
 
+// 添加新的 replica 连接
+func addReplicaConn(conn net.Conn) {
+    replicaConnsMu.Lock()
+    defer replicaConnsMu.Unlock()
+    replicaConns = append(replicaConns, conn)
+}
+
+// 移除失效的 replica 连接
+func removeReplicaConn(bad net.Conn) {
+    replicaConnsMu.Lock()
+    defer replicaConnsMu.Unlock()
+    for i, c := range replicaConns {
+        if c == bad {
+            replicaConns = append(replicaConns[:i], replicaConns[i+1:]...)
+            break
+        }
+    }
+}
+
+// 获取 snapshot（避免遍历时长时间持锁）
+func snapshotReplicaConns() []net.Conn {
+    replicaConnsMu.RLock()
+    defer replicaConnsMu.RUnlock()
+    return append([]net.Conn(nil), replicaConns...)
+}
+
 // 把命令转发给所有已连接的 replicas
 func propagateToReplicas(args []string) {
-	resp := buildRESPArray(args) // 把命令转成 RESP 格式
+    resp := buildRESPArray(args)
 
-	// 遍历所有 replica 连接，写出去
-	for _, rconn := range replicaConns {
-		_, err := fmt.Fprint(rconn, resp)
-		if err != nil {
-			fmt.Println("Error propagating to replica:", err)
-		}
-	}
+    // 拷贝一份 snapshot，避免在锁里执行 I/O
+    conns := snapshotReplicaConns()
+
+    for _, rconn := range conns {
+        _, err := rconn.Write(resp)
+        if err != nil {
+            fmt.Println("Error propagating to replica:", err)
+            rconn.Close()
+            removeReplicaConn(rconn) // 出错时从全局列表移除
+        }
+    }
 }
 
 // 把 args 转成 RESP2 Array 格式，比如 ["SET", "foo", "bar"]
 // → *3\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$3\r\nbar\r\n
-func buildRESPArray(args []string) string {
+func buildRESPArray(args []string) []byte {
     var sb strings.Builder
     sb.WriteString(fmt.Sprintf("*%d\r\n", len(args)))
     for _, arg := range args {
-        sb.WriteString(fmt.Sprintf("$%d\r\n%s\r\n", len(arg), arg))
+        sb.WriteString(fmt.Sprintf("$%d\r\n", len(arg)))
+        sb.WriteString(arg)
+        sb.WriteString("\r\n")
     }
-    return sb.String()
+    return []byte(sb.String())
 }
