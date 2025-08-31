@@ -22,7 +22,7 @@ import (
 // 命令执行结果
 type CommandResult struct {
 	IsWrite bool // 是否修改了数据（master需要propagate）
-	Replied bool // handler内部是否已经回复客户端， 默认false
+	// Replied bool // handler内部是否已经回复客户端， 默认false
 }
 
 type valueKind int // Define a new type for value kinds based with constants

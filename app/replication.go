@@ -9,6 +9,8 @@ import (
 	"net"
 	"encoding/base64"
 	"sync"
+	"bufio"
+	"io"
 )
 
 const replidChars = "abcdefghijklmnopqrstuvwxyz0123456789"
@@ -74,21 +76,67 @@ func GetReplicationInfo() string {
     )
 }
 
+// func connectToMaster(host string, port int, replicaPort int) {
+// 	addr := fmt.Sprintf("%s:%d", host, port)
+
+// 	// 和 master 建立 TCP 连接
+// 	conn, err := net.Dial("tcp", addr)
+// 	if err != nil {
+// 		fmt.Println("Failed to connect to master:", err)
+// 		return
+// 	}
+// 	fmt.Println("Connected to master at", addr)
+// 	// 进行握手
+// 	doHandshakeWithMaster(conn, replicaPort)
+// }
+
 func connectToMaster(host string, port int, replicaPort int) {
 	addr := fmt.Sprintf("%s:%d", host, port)
 
-	// 和 master 建立 TCP 连接
+	// 1. 和 master 建立 TCP 连接
 	conn, err := net.Dial("tcp", addr)
 	if err != nil {
 		fmt.Println("Failed to connect to master:", err)
 		return
 	}
 	fmt.Println("Connected to master at", addr)
-	// 进行握手
+
+	// 2. 进行复制握手（这一步要用真实 conn 回复 master）
 	doHandshakeWithMaster(conn, replicaPort)
 
+	// 3. 握手完成后，进入 propagation 阶段 → 启动 goroutine 不断接收 master 的命令
+	go func() {
+		reader := bufio.NewReader(conn)
+		ctx := getClientCtx(conn)
+		ctx.isReplica = true // 标记这是 master->replica 的数据流连接
 
+		for {
+			args, err := readArray(reader)
+			if err != nil {
+				if err == io.EOF {
+					fmt.Println("Master closed connection")
+					return
+				}
+				fmt.Println("Error reading from master:", err)
+				return
+			}
+			if len(args) == 0 {
+				continue
+			}
+
+			cmd := strings.ToUpper(args[0])
+			if handler, ok := routs[cmd]; ok {
+				// ⚡ 用 DummyConn 吃掉写回，但要执行 handler 更新 DB
+				dummy := &DummyConn{}
+				handler(dummy, args, ctx)
+				fmt.Printf("[replica] applied propagated command: %v\n", args)
+			} else {
+				fmt.Printf("[replica] unknown propagated command: %v\n", args)
+			}
+		}
+	}()
 }
+
 
 func doHandshakeWithMaster(conn net.Conn, replicaPort int) {
 	// 第一步：发送 PING

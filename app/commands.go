@@ -10,7 +10,7 @@ import (
 
 // **********************basic commands***********************
 func replied(isWrite bool) CommandResult {
-	return CommandResult{IsWrite: isWrite, Replied: true}
+	return CommandResult{IsWrite: isWrite}
 }
 
 func cmdPING(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
@@ -761,8 +761,8 @@ func cmdREPLCONF(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
 		return replied(false)
 	}
 
-	// 标记这个连接为 replica
-	ctx.isReplica = true
+	// // 标记这个连接为 replica
+	// ctx.isReplica = true
 
     writeSimple(conn, "OK")
 	return replied(false)
@@ -772,7 +772,7 @@ func cmdREPLCONF(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
 // ex. PSYNC ? -1
 func cmdPSYNC(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
 	// 标记当前连接为 replica
-	ctx.isReplica = true
+	// ctx.isReplica = true
 
 	// PSYNC ? -1
 	// 第一次全量同步：返回 FULLRESYNC

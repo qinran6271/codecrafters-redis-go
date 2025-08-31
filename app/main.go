@@ -80,19 +80,33 @@ func handleConnection(conn net.Conn) {
 		// === 事务模式拦截 ===
 		if ctx.tx.inMulti && cmd != "EXEC" && cmd != "DISCARD" && cmd != "MULTI" {
 			ctx.tx.queue = append(ctx.tx.queue, args)
-			writeSimple(conn, "QUEUED")
+			if !ctx.isReplica {
+				writeSimple(conn, "QUEUED")
+			}
 			continue
 		}
 		
 		// === 正常执行命令 ===
 		if handler, ok := routs[cmd]; ok {
 			res := handler(conn, args, ctx) // Call the command handler
+			// var res CommandResult
+
+			// if ctx.isReplica {
+			// 	dummy := &DummyConn{}
+			// 	res = handler(dummy, args, ctx) // ✅ 所有写操作都会被吞掉
+			// } else {
+			// 	res = handler(conn, args, ctx)
+				
+			// }
+			// 如果当前是 master，且命令是写命令，且不是来自 replica 的连接，就传播给所有 replica
 			if role == "master"  && res.IsWrite && !ctx.isReplica {
 				 propagateToReplicas(args)
 			}
 
 		} else {
+			if !ctx.isReplica {
 			writeError(conn, fmt.Sprintf("unknown command '%s'", args[0]))
+			}
 		}
 		fmt.Printf("args: %#v\n", args) // Debug 
 	}
