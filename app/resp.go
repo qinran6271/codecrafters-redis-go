@@ -111,67 +111,87 @@ func readBulk(r *bufio.Reader) (string, error) {
 	return string(buf), nil
 }
 
-// 读取数组（命令参数）
-func readArray(r *bufio.Reader) ([]string, error) {
+// // 读取数组（命令参数）
+// func readArray(r *bufio.Reader) ([]string, error) {
+// 	head, err := readLine(r) // e.g. "*3"
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	if !strings.HasPrefix(head, "*") {
+// 		return nil, fmt.Errorf("expect *, got %q", head)
+// 	}
+
+// 	// 数组长度
+// 	n, err := strconv.Atoi(head[1:])
+// 	if err != nil || n < 0 {
+// 		return nil, fmt.Errorf("bad array len: %v", head)
+// 	}
+
+// 	args := make([]string, 0, n)
+// 	for i := 0; i < n; i++ {
+// 		s, err := readBulk(r)
+// 		if err != nil {
+// 			return nil, err
+// 		}
+// 		args = append(args, s)
+// 	}
+// 	return args, nil
+// }
+
+// 读取数组（命令参数），同时返回消耗的字节数
+func readArray(r *bufio.Reader) ([]string, int, error) {
 	head, err := readLine(r) // e.g. "*3"
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	if !strings.HasPrefix(head, "*") {
-		return nil, fmt.Errorf("expect *, got %q", head)
+		return nil, len(head) + 2, fmt.Errorf("expect *, got %q", head)
 	}
 
 	// 数组长度
 	n, err := strconv.Atoi(head[1:])
 	if err != nil || n < 0 {
-		return nil, fmt.Errorf("bad array len: %v", head)
+		return nil, len(head) + 2, fmt.Errorf("bad array len: %v", head)
 	}
 
 	args := make([]string, 0, n)
+	consumed := len(head) + 2 // 头部本身（包含 \r\n）
+
 	for i := 0; i < n; i++ {
-		s, err := readBulk(r)
+		s, size, err := readBulkWithSize(r)
 		if err != nil {
-			return nil, err
+			return nil, consumed + size, err
 		}
 		args = append(args, s)
+		consumed += size
 	}
-	return args, nil
+
+	return args, consumed, nil
 }
 
-func readRESP(r *bufio.Reader) ([]string, error) {
-    prefix, err := r.ReadByte()
-    if err != nil {
-        return nil, err
-    }
+// 读取 RESP Bulk String，并返回值和消耗的字节数
+func readBulkWithSize(r *bufio.Reader) (string, int, error) {
+	head, err := readLine(r) // e.g. "$3"
+	if err != nil {
+		return "", 0, err
+	}
+	if !strings.HasPrefix(head, "$") {
+		return "", len(head) + 2, fmt.Errorf("expect $, got %q", head)
+	}
 
-    switch prefix {
-    case '*': // Array
-        line, _ := r.ReadString('\n')
-        n, _ := strconv.Atoi(strings.TrimSpace(line))
-        result := make([]string, 0, n)
-        for i := 0; i < n; i++ {
-            elem, err := readRESP(r) // 递归解析子元素
-            if err != nil {
-                return nil, err
-            }
-            result = append(result, elem...)
-        }
-        return result, nil
+	// 长度
+	n, err := strconv.Atoi(head[1:])
+	if err != nil || n < 0 {
+		return "", len(head) + 2, fmt.Errorf("bad bulk len: %v", head)
+	}
 
-    case '$': // Bulk string
-        line, _ := r.ReadString('\n')
-        length, _ := strconv.Atoi(strings.TrimSpace(line))
-        buf := make([]byte, length+2) // 包含 \r\n
-        io.ReadFull(r, buf)
-        return []string{string(buf[:length])}, nil
+	// 真正的内容
+	buf := make([]byte, n+2) // +2 for \r\n
+	if _, err := io.ReadFull(r, buf); err != nil {
+		return "", len(head) + 2 + n + 2, err
+	}
 
-    case '+', '-', ':': // simple string / error / integer
-        line, _ := r.ReadString('\n')
-        return []string{strings.TrimSuffix(line, "\r\n")}, nil
-
-    default:
-        return nil, fmt.Errorf("expect RESP type, got %q", prefix)
-    }
+	return string(buf[:n]), len(head) + 2 + n + 2, nil
 }
 
 

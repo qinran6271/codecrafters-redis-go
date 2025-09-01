@@ -8,6 +8,7 @@ import (
 type ClientCtx struct {
 	tx *transactionState // 事务相关的状态
 	isReplica bool
+	offset int64 // 当前副本已经处理的字节数
 	// 后续可以扩展更多，比如：
 	// subscribedChannels []string
 }
