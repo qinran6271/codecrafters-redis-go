@@ -102,13 +102,14 @@ func connectToMaster(host string, port int, replicaPort int) {
 	fmt.Println("Connected to master at", addr)
 
 	// 2. 进行复制握手（这一步要用真实 conn 回复 master）
-	doHandshakeWithMaster(conn, replicaPort)
+    reader, ctx, err := doHandshakeWithMaster(conn, replicaPort)
+    if err != nil {
+        fmt.Println("Handshake failed:", err)
+        return
+    }
 
 	// 3. 握手完成后，进入 propagation 阶段 → 启动 goroutine 不断接收 master 的命令
 	go func() {
-		reader := bufio.NewReader(conn)
-		ctx := getClientCtx(conn)
-		ctx.isReplica = true // 标记这是 master->replica 的数据流连接
 
 		for {
 			args, err := readArray(reader)
@@ -126,9 +127,13 @@ func connectToMaster(host string, port int, replicaPort int) {
 
 			cmd := strings.ToUpper(args[0])
 			if handler, ok := routs[cmd]; ok {
-				// ⚡ 用 DummyConn 吃掉写回，但要执行 handler 更新 DB
-				dummy := &DummyConn{}
-				handler(dummy, args, ctx)
+                // REPLCONF GETACK 需要用真实 conn 回复
+                if cmd == "REPLCONF" && len(args) >= 2 && strings.ToUpper(args[1]) == "GETACK" {
+                    handler(conn, args, ctx)
+                } else {
+                    dummy := &DummyConn{}
+                    handler(dummy, args, ctx) // 其他 propagate 的命令只更新 DB，不回 master
+                }
 				fmt.Printf("[replica] applied propagated command: %v\n", args)
 			} else {
 				fmt.Printf("[replica] unknown propagated command: %v\n", args)
@@ -138,46 +143,120 @@ func connectToMaster(host string, port int, replicaPort int) {
 }
 
 
-func doHandshakeWithMaster(conn net.Conn, replicaPort int) {
-	// 第一步：发送 PING
-	pingMsg := "*1\r\n$4\r\nPING\r\n"
-    fmt.Fprint(conn, pingMsg)
-	readResponse(conn) // 应该是 "+PONG"
+// func doHandshakeWithMaster(conn net.Conn, replicaPort int) (*bufio.Reader, *ClientCtx, error) {
+// 	reader := bufio.NewReader(conn)
+	
+// 	// 第一步：发送 PING
+// 	pingMsg := "*1\r\n$4\r\nPING\r\n"
+//     fmt.Fprint(conn, pingMsg)
+// 	readResponse(conn) // 应该是 "+PONG"
 
-	// 第二步：发送两次 REPLCONF 命令
+// 	// 第二步：发送两次 REPLCONF 命令
+// 	// 1) REPLCONF listening-port <replicaPort>
+// 	portStr := strconv.Itoa(replicaPort)
+// 	replconfPortMsg := fmt.Sprintf(
+// 		"*3\r\n$8\r\nREPLCONF\r\n$14\r\nlistening-port\r\n$%d\r\n%s\r\n",
+// 		len(portStr), portStr,
+// 	)
+// 	fmt.Fprint(conn, replconfPortMsg)
+// 	readResponse(conn) // 应该是 "+OK"
+// 	// 2) REPLCONF capa psync2
+// 	replconfCapaMsg := "*3\r\n$8\r\nREPLCONF\r\n$4\r\ncapa\r\n$6\r\npsync2\r\n"
+//     fmt.Fprint(conn, replconfCapaMsg)
+//     readResponse(conn) // 应该是 "+OK"
+
+// 	// 第三步：发送 PSYNC <master_replid> -1
+// 	psyncMsg := "*3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n"
+// 	fmt.Fprint(conn, psyncMsg)
+// 	reply := readResponse(conn) // master 应该在后续阶段返回 +FULLRESYNC ...
+	
+// 	fmt.Println("Master replied:", reply)
+
+// 	// 读取并丢掉 RDB bulk string
+//     head, _ := readLine(reader) // "$88\r\n"
+//     if strings.HasPrefix(head, "$") {
+//         length, _ := strconv.Atoi(strings.TrimSpace(head[1:]))
+//         buf := make([]byte, length+2) // +2 for CRLF
+//         _, err := io.ReadFull(reader, buf)
+//         if err != nil {
+//             fmt.Println("Error reading RDB:", err)
+//             return nil, nil, err
+//         }
+//         fmt.Printf("[replica] consumed RDB snapshot (%d bytes)\n", length)
+//     }
+
+//     ctx := getClientCtx(conn)
+//     ctx.isReplica = true
+//     return reader, ctx, nil
+
+// }
+
+
+// func readResponse(conn net.Conn) string {
+//     buf := make([]byte, 1024)
+//     n, err := conn.Read(buf)
+//     if err != nil {
+//         fmt.Println("Error reading from master:", err)
+//         return ""
+//     }
+//     reply := string(buf[:n])
+//     fmt.Print("Master replied:", reply)
+//     return reply
+// }
+
+func doHandshakeWithMaster(conn net.Conn, replicaPort int) (*bufio.Reader, *ClientCtx, error) {
+    reader := bufio.NewReader(conn)
+	// handshake 三部曲
+    // 第一步：发送 PING
+    fmt.Fprint(conn, "*1\r\n$4\r\nPING\r\n")
+    line, _ := readResponse(reader) // 用同一个 reader
+    fmt.Println("Master replied:", line)
+
+    // 第二步：发送两次 REPLCONF 命令
 	// 1) REPLCONF listening-port <replicaPort>
-	portStr := strconv.Itoa(replicaPort)
-	replconfPortMsg := fmt.Sprintf(
-		"*3\r\n$8\r\nREPLCONF\r\n$14\r\nlistening-port\r\n$%d\r\n%s\r\n",
-		len(portStr), portStr,
-	)
-	fmt.Fprint(conn, replconfPortMsg)
-	readResponse(conn) // 应该是 "+OK"
-	// 2) REPLCONF capa psync2
-	replconfCapaMsg := "*3\r\n$8\r\nREPLCONF\r\n$4\r\ncapa\r\n$6\r\npsync2\r\n"
-    fmt.Fprint(conn, replconfCapaMsg)
-    readResponse(conn) // 应该是 "+OK"
+    portStr := strconv.Itoa(replicaPort)
+    msg1 := fmt.Sprintf("*3\r\n$8\r\nREPLCONF\r\n$14\r\nlistening-port\r\n$%d\r\n%s\r\n",
+        len(portStr), portStr)
+    fmt.Fprint(conn, msg1)
+    line, _ = readResponse(reader)
+    fmt.Println("Master replied:", line)
+
+    // 2) REPLCONF capa psync2
+    msg2 := "*3\r\n$8\r\nREPLCONF\r\n$4\r\ncapa\r\n$6\r\npsync2\r\n"
+    fmt.Fprint(conn, msg2)
+    line, _ = readResponse(reader)
+    fmt.Println("Master replied:", line)
 
 	// 第三步：发送 PSYNC <master_replid> -1
-	psyncMsg := "*3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n"
-	fmt.Fprint(conn, psyncMsg)
+    msg3 := "*3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n"
+    fmt.Fprint(conn, msg3)
 
-	reply := readResponse(conn) // master 应该在后续阶段返回 +FULLRESYNC ...
-	fmt.Println("Master replied:", reply)
+	// 读 PSYNC 回
+    // 1）读 FULLRESYNC 回复
+    line, _ = readLine(reader) // +FULLRESYNC ...
+    fmt.Println("Master replied:", line)
+
+	// 解析 FULLRESYNC 回复
+    // 6. 消费 RDB bulk string
+	if err := readRDBDump(reader); err != nil {
+		fmt.Println("Error reading RDB:", err)
+		return nil, nil, err
+	}
+    // 返回 reader 和 ctx
+    ctx := getClientCtx(conn)
+    ctx.isReplica = true
+    return reader, ctx, nil
 }
 
 
-func readResponse(conn net.Conn) string {
-    buf := make([]byte, 1024)
-    n, err := conn.Read(buf)
+func readResponse(r *bufio.Reader) (string, error) {
+    line, err := readLine(r)
     if err != nil {
-        fmt.Println("Error reading from master:", err)
-        return ""
+        return "", err
     }
-    reply := string(buf[:n])
-    fmt.Print("Master replied:", reply)
-    return reply
+    return line, nil
 }
+
 
 // 添加新的 replica 连接
 func addReplicaConn(conn net.Conn) {
@@ -234,3 +313,32 @@ func buildRESPArray(args []string) []byte {
     }
     return []byte(sb.String())
 }
+
+
+// 处理 FULLRESYNC 后读取并丢弃 RDB 文件
+func readRDBDump(r *bufio.Reader) error {
+    // 读头: "$88\r\n"
+    head, err := readLine(r)
+    if err != nil {
+        return err
+    }
+    if !strings.HasPrefix(head, "$") {
+        return fmt.Errorf("expected bulk string, got %q", head)
+    }
+
+    // 解析长度
+    length, err := strconv.Atoi(strings.TrimSpace(head[1:]))
+    if err != nil {
+        return fmt.Errorf("bad RDB length: %q", head)
+    }
+
+    // 只读 length 个字节（payload，包括末尾 CRLF）
+    buf := make([]byte, length)
+    if _, err := io.ReadFull(r, buf); err != nil {
+        return fmt.Errorf("failed to read RDB payload: %v", err)
+    }
+
+    fmt.Printf("[replica] consumed RDB snapshot (%d bytes)\n", length)
+    return nil
+}
+

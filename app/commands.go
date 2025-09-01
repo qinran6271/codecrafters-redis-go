@@ -756,17 +756,37 @@ func cmdINFO(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
 }
 
 func cmdREPLCONF(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
-	if len(args) < 3 {
-		writeError(conn, "ERR wrong number of arguments for 'REPLCONF'")
-		return replied(false)
-	}
+    if len(args) < 2 {
+        writeError(conn, "ERR wrong number of arguments for 'REPLCONF'")
+        return CommandResult{IsWrite: false}
+    }
 
-	// // 标记这个连接为 replica
-	// ctx.isReplica = true
+    sub := strings.ToUpper(args[1])
 
-    writeSimple(conn, "OK")
-	return replied(false)
+    switch sub {
+    case "GETACK": 
+		_ = writeArrayBulk(conn, "REPLCONF", "ACK", "0")
+        return CommandResult{IsWrite: false}
+
+    case "LISTENING-PORT":
+        if len(args) < 3 {
+            writeError(conn, "ERR wrong number of arguments for 'REPLCONF'")
+            return CommandResult{IsWrite: false}
+        }
+        // ctx.replicaPort = args[2] // 如果你要保存端口，可以在这里
+        writeSimple(conn, "OK")
+        return CommandResult{IsWrite: false}
+
+    case "CAPA":
+        writeSimple(conn, "OK")
+        return CommandResult{IsWrite: false}
+
+    default:
+        writeError(conn, "ERR unknown REPLCONF subcommand")
+        return CommandResult{IsWrite: false}
+    }
 }
+
 
 // 客户端发送（replica） PSYNC <replid> <offset>
 // ex. PSYNC ? -1

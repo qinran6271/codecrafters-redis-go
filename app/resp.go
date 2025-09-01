@@ -138,6 +138,44 @@ func readArray(r *bufio.Reader) ([]string, error) {
 	return args, nil
 }
 
+func readRESP(r *bufio.Reader) ([]string, error) {
+    prefix, err := r.ReadByte()
+    if err != nil {
+        return nil, err
+    }
+
+    switch prefix {
+    case '*': // Array
+        line, _ := r.ReadString('\n')
+        n, _ := strconv.Atoi(strings.TrimSpace(line))
+        result := make([]string, 0, n)
+        for i := 0; i < n; i++ {
+            elem, err := readRESP(r) // 递归解析子元素
+            if err != nil {
+                return nil, err
+            }
+            result = append(result, elem...)
+        }
+        return result, nil
+
+    case '$': // Bulk string
+        line, _ := r.ReadString('\n')
+        length, _ := strconv.Atoi(strings.TrimSpace(line))
+        buf := make([]byte, length+2) // 包含 \r\n
+        io.ReadFull(r, buf)
+        return []string{string(buf[:length])}, nil
+
+    case '+', '-', ':': // simple string / error / integer
+        line, _ := r.ReadString('\n')
+        return []string{strings.TrimSuffix(line, "\r\n")}, nil
+
+    default:
+        return nil, fmt.Errorf("expect RESP type, got %q", prefix)
+    }
+}
+
+
+
 // Simple RESP String：+<payload>\r\n
 func writeSimple(conn net.Conn, s string) {
     fmt.Fprintf(conn, "+%s\r\n", s)
@@ -177,4 +215,19 @@ func writeNullArray(conn net.Conn) {
     fmt.Fprint(conn, "*-1\r\n")
 }
 
+// writeArrayBulk 写一个由纯 Bulk String 组成的 RESP Array
+// 每个元素都会被编码为 $<len>\r\n<payload>\r\n
+func writeArrayBulk(conn net.Conn, elems ...string) error {
+    // 先写数组头：*<n>\r\n
+    if _, err := fmt.Fprintf(conn, "*%d\r\n", len(elems)); err != nil {
+        return err
+    }
 
+    // 逐个写 bulk string
+    for _, e := range elems {
+        if _, err := fmt.Fprintf(conn, "$%d\r\n%s\r\n", len(e), e); err != nil {
+            return err
+        }
+    }
+    return nil
+}
