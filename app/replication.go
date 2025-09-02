@@ -103,7 +103,7 @@ func connectToMaster(host string, port int, replicaPort int) {
 	}
 
 	// 3. 握手完成后，进入 propagation 阶段 → 启动 goroutine 不断接收 master 的命令
-	go func() {
+	// go func() {
 
 		for {
 			args, consumed, err := readArray(reader)
@@ -135,7 +135,7 @@ func connectToMaster(host string, port int, replicaPort int) {
 			}
 			ctx.offset += int64(consumed)
 		}
-	}()
+	// }()
 }
 
 

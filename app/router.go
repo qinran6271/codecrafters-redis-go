@@ -29,6 +29,7 @@ func init() {
 	"INFO": cmdINFO,
 	"REPLCONF": cmdREPLCONF,
 	"PSYNC": cmdPSYNC,
+	"WAIT": cmdWAIT,
 	}
 }
     

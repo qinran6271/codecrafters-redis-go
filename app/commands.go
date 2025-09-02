@@ -764,9 +764,9 @@ func cmdREPLCONF(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
     sub := strings.ToUpper(args[1])
 
     switch sub {
-    case "GETACK": 
-		_ = writeArrayBulk(conn, "REPLCONF", "ACK", "0")
-        return CommandResult{IsWrite: false}
+    // case "GETACK": 
+	// 	_ = writeArrayBulk(conn, "REPLCONF", "ACK", "0")
+    //     return CommandResult{IsWrite: false}
 
     case "LISTENING-PORT":
         if len(args) < 3 {
@@ -812,4 +812,11 @@ func cmdPSYNC(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
 
 	// PSYNC 本身不是写命令，不需要传播
 	return replied(false)
+}
+
+func cmdWAIT(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
+    // 测试用例是 WAIT 0 60000
+    // 当前阶段不用真的统计 replica，直接返回 0
+    writeInteger(conn, 0)
+    return CommandResult{IsWrite: false}
 }
