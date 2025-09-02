@@ -205,6 +205,11 @@ func addReplicaConn(conn net.Conn) {
     replicaConns = append(replicaConns, conn)
 }
 
+func replicaCount() int {
+	replicaConnsMu.Lock()
+	defer replicaConnsMu.Unlock()
+	return len(replicaConns)
+}
 // 移除失效的 replica 连接
 func removeReplicaConn(bad net.Conn) {
     replicaConnsMu.Lock()

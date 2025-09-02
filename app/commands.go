@@ -815,8 +815,17 @@ func cmdPSYNC(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
 }
 
 func cmdWAIT(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
-    // 测试用例是 WAIT 0 60000
-    // 当前阶段不用真的统计 replica，直接返回 0
-    writeInteger(conn, 0)
+    if len(args) != 3 {
+        writeError(conn, "ERR wrong number of arguments for 'WAIT'")
+        return CommandResult{IsWrite: false}
+    }
+
+    // numreplicas := args[1]
+    // timeout := args[2]
+    // 当前阶段先不用真的等待，只返回已连接的 replica 数
+
+    count := replicaCount()
+    writeInteger(conn, int64(count))
     return CommandResult{IsWrite: false}
 }
+
