@@ -15,6 +15,10 @@ import (
 var _ = net.Listen
 var _ = os.Exit
 
+
+var configDir string
+var configDBFilename string
+
 var role = "master" // "master" or "replica"
 
 func main() {
@@ -24,8 +28,16 @@ func main() {
 	// 定义一个参数 port，默认 6379
 	port := flag.Int("port", 6379, "Port to listen on")
 	replicaof := flag.String("replicaof", "", "host port of master")
+    dir := flag.String("dir", "/tmp", "Directory to store RDB files")
+    dbfilename := flag.String("dbfilename", "dump.rdb", "RDB file name")
+
+
 	flag.Parse()
 
+    // 保存到全局变量，方便 CONFIG 命令读取
+    configDir = *dir
+    configDBFilename = *dbfilename
+	
 	// 如果有传 --replicaof，就切换角色
 	// ./your_program.sh --port 6380 --replicaof "localhost 6379"
 	if *replicaof != "" {

@@ -845,3 +845,31 @@ func cmdWAIT(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
         time.Sleep(10 * time.Millisecond) // 简单轮询
     }
 }
+
+
+// ********************** RDB ***********************
+
+func cmdCONFIG(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
+    if len(args) < 3 || strings.ToUpper(args[1]) != "GET" {
+        writeError(conn, "ERR only CONFIG GET is supported")
+        return replied(false)
+    }
+
+    param := strings.ToLower(args[2])
+
+    switch param {
+    case "dir":
+        writeArrayHeader(conn, 2)
+        writeBulkString(conn, "dir")
+        writeBulkString(conn, configDir)
+    case "dbfilename":
+        writeArrayHeader(conn, 2)
+        writeBulkString(conn, "dbfilename")
+        writeBulkString(conn, configDBFilename)
+    default:
+        // Redis 在参数不存在时返回空数组
+        writeArrayHeader(conn, 0)
+    }
+
+   return replied(false)
+}

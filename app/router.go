@@ -30,6 +30,7 @@ func init() {
 	"REPLCONF": cmdREPLCONF,
 	"PSYNC": cmdPSYNC,
 	"WAIT": cmdWAIT,
+	"CONFIG": cmdCONFIG,
 	}
 }
     
