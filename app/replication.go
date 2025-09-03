@@ -20,10 +20,25 @@ var masterReplOffset = 0
 var masterHost string
 var masterPort int
 
+// master 端
+// var (
+//     replicaConns   []net.Conn // 保存所有 replica 的连接
+//     replicaConnsMu sync.RWMutex // 读写分离：读多写少时效率更高
+// )
+type ReplicaState struct {
+    conn  net.Conn
+    acked int64 // 最近一次 ACK 的 offset
+}
+
+// master 每处理一条写命令，自己要维护一个 masterOffset，表示「传播给 replicas 的总字节数」。
+// 以后 WAIT 就会基于这个 offset 来判断副本是否追上。
+var masterOffset int64
+
 var (
-    replicaConns   []net.Conn // 保存所有 replica 的连接
-    replicaConnsMu sync.RWMutex // 读写分离：读多写少时效率更高
+    replicas   []*ReplicaState
+    replicasMu sync.RWMutex
 )
+
 
 var emptyRdbDump []byte
 func init() {
@@ -200,48 +215,62 @@ func readResponse(r *bufio.Reader) (string, error) {
 
 // 添加新的 replica 连接
 func addReplicaConn(conn net.Conn) {
-    replicaConnsMu.Lock()
-    defer replicaConnsMu.Unlock()
-    replicaConns = append(replicaConns, conn)
+    replicasMu.Lock()
+    defer replicasMu.Unlock()
+    replicas = append(replicas, &ReplicaState{conn: conn, acked: 0})
 }
 
 func replicaCount() int {
-	replicaConnsMu.Lock()
-	defer replicaConnsMu.Unlock()
-	return len(replicaConns)
+	replicasMu.RLock()
+	defer replicasMu.RUnlock()
+	return len(replicas)
 }
 // 移除失效的 replica 连接
 func removeReplicaConn(bad net.Conn) {
-    replicaConnsMu.Lock()
-    defer replicaConnsMu.Unlock()
-    for i, c := range replicaConns {
-        if c == bad {
-            replicaConns = append(replicaConns[:i], replicaConns[i+1:]...)
+    replicasMu.Lock()
+    defer replicasMu.Unlock()
+    for i, r := range replicas {
+        if r.conn == bad {
+            replicas = append(replicas[:i], replicas[i+1:]...)
             break
         }
     }
 }
 
 // 获取 snapshot（避免遍历时长时间持锁）
-func snapshotReplicaConns() []net.Conn {
-    replicaConnsMu.RLock()
-    defer replicaConnsMu.RUnlock()
-    return append([]net.Conn(nil), replicaConns...)
+func snapshotReplicaConns() []*ReplicaState {
+    replicasMu.RLock()
+    defer replicasMu.RUnlock()
+    return append([]*ReplicaState(nil), replicas...)
 }
 
 // 把命令转发给所有已连接的 replicas
 func propagateToReplicas(args []string) {
     resp := buildRESPArray(args)
 
+	// master 也算处理了这条命令 → 更新 offset
+	masterOffset += int64(len(resp))
+
     // 拷贝一份 snapshot，避免在锁里执行 I/O
     conns := snapshotReplicaConns()
 
-    for _, rconn := range conns {
-        _, err := rconn.Write(resp)
+    for _, r := range conns {
+       _, err := r.conn.Write([]byte(resp))
         if err != nil {
             fmt.Println("Error propagating to replica:", err)
-            rconn.Close()
-            removeReplicaConn(rconn) // 出错时从全局列表移除
+            r.conn.Close()
+            removeReplicaConn(r.conn) // 出错时从全局列表移除
+        }
+    }
+}
+
+func updateReplicaAck(conn net.Conn, offset int64) {
+    replicasMu.Lock()
+    defer replicasMu.Unlock()
+    for _, r := range replicas {
+        if r.conn == conn {
+            r.acked = offset
+            break
         }
     }
 }
@@ -287,3 +316,62 @@ func readRDBDump(r *bufio.Reader) error {
     return nil
 }
 
+
+//
+// func processReplicaCommand(conn net.Conn, cmd string, args []string, consumed int, ctx *ClientCtx) bool {
+// 	// REPLCONF GETACK
+// 	if cmd == "REPLCONF" && len(args) >= 2 && strings.ToUpper(args[1]) == "GETACK" {
+// 		reply := buildRESPArray([]string{"REPLCONF", "ACK", strconv.FormatInt(ctx.offset, 10)})
+// 		conn.Write([]byte(reply))
+// 		ctx.offset += int64(consumed)
+// 		return true
+// 	}
+
+// 	// replica 下的 PING：只加 offset，不回复
+// 	if ctx.isReplica && cmd == "PING" {
+// 		ctx.offset += int64(consumed)
+// 		return true
+// 	}
+
+// 	return false
+// }
+
+func processReplicaCommand(conn net.Conn, cmd string, args []string, consumed int, ctx *ClientCtx) bool {
+    // Replica 收到 master 的 GETACK
+    if cmd == "REPLCONF" && len(args) >= 2 && strings.ToUpper(args[1]) == "GETACK" {
+        reply := buildRESPArray([]string{"REPLCONF", "ACK", strconv.FormatInt(ctx.offset, 10)})
+        conn.Write([]byte(reply))
+        ctx.offset += int64(consumed)
+        return true
+    }
+
+    // Master 收到 replica 的 ACK
+    if cmd == "REPLCONF" && len(args) >= 2 && strings.ToUpper(args[1]) == "ACK" {
+        if len(args) >= 3 {
+            off, _ := strconv.ParseInt(args[2], 10, 64)
+            updateReplicaAck(conn, off) // 🔑 更新 ReplicaState.acked
+        }
+        return true
+    }
+
+    // Replica 收到 master 的 PING：只更新 offset，不回复
+    if ctx.isReplica && cmd == "PING" {
+        ctx.offset += int64(consumed)
+        return true
+    }
+
+    return false
+}
+
+
+func countReplicasAtLeast(offset int64) int {
+    replicasMu.RLock()
+    defer replicasMu.RUnlock()
+    n := 0
+    for _, r := range replicas {
+        if r.acked >= offset {
+            n++
+        }
+    }
+    return n
+}

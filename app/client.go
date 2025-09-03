@@ -4,11 +4,11 @@ import (
 	"net"
 )
 
-// 每个客户端连接的上下文
+// 每个客户端或者replica连接的上下文
 type ClientCtx struct {
 	tx *transactionState // 事务相关的状态
 	isReplica bool
-	offset int64 // 当前副本已经处理的字节数
+	offset int64 // 当前副本已经处理的字节数 只对 replica 自己有意义
 	// 后续可以扩展更多，比如：
 	// subscribedChannels []string
 }

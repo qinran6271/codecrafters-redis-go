@@ -8,7 +8,7 @@ import (
 	"os"  // For handling errors and exiting the program gracefully.
 	"io" // For reading input from the client.
 	"flag" // For parsing command-line flags (like port number).
-	"strconv" // For converting strings to integers (like port number).
+	// "strconv" // For converting strings to integers (like port number).
 )
 
 // Ensures gofmt doesn't remove the "net" and "os" imports in stage 1 (feel free to remove this!)
@@ -111,24 +111,4 @@ func handleConnection(conn net.Conn) {
 	}
 
 }
-
-
-func processReplicaCommand(conn net.Conn, cmd string, args []string, consumed int, ctx *ClientCtx) bool {
-	// REPLCONF GETACK
-	if cmd == "REPLCONF" && len(args) >= 2 && strings.ToUpper(args[1]) == "GETACK" {
-		reply := buildRESPArray([]string{"REPLCONF", "ACK", strconv.FormatInt(ctx.offset, 10)})
-		conn.Write([]byte(reply))
-		ctx.offset += int64(consumed)
-		return true
-	}
-
-	// replica 下的 PING：只加 offset，不回复
-	if ctx.isReplica && cmd == "PING" {
-		ctx.offset += int64(consumed)
-		return true
-	}
-
-	return false
-}
-
 

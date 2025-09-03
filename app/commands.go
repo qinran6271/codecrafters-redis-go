@@ -817,15 +817,31 @@ func cmdPSYNC(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
 func cmdWAIT(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
     if len(args) != 3 {
         writeError(conn, "ERR wrong number of arguments for 'WAIT'")
-        return CommandResult{IsWrite: false}
+        return CommandResult{}
     }
 
-    // numreplicas := args[1]
-    // timeout := args[2]
-    // 当前阶段先不用真的等待，只返回已连接的 replica 数
+    numReplicas, _ := strconv.Atoi(args[1])
+    timeoutMs, _ := strconv.Atoi(args[2])
 
-    count := replicaCount()
-    writeInteger(conn, int64(count))
-    return CommandResult{IsWrite: false}
+    targetOffset := masterOffset
+
+    // 1. 广播 GETACK 给所有 replica
+    for _, r := range snapshotReplicaConns() {
+        r.conn.Write([]byte(buildRESPArray([]string{"REPLCONF", "GETACK", "*"})))
+    }
+
+    // 2. 等待 ACK 或超时
+    deadline := time.Now().Add(time.Duration(timeoutMs) * time.Millisecond)
+    for {
+        acked := countReplicasAtLeast(targetOffset)
+        if acked >= numReplicas {
+            writeInteger(conn, int64(acked))
+            return CommandResult{}
+        }
+        if time.Now().After(deadline) {
+            writeInteger(conn, int64(acked))
+            return CommandResult{}
+        }
+        time.Sleep(10 * time.Millisecond) // 简单轮询
+    }
 }
-
