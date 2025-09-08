@@ -873,3 +873,39 @@ func cmdCONFIG(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
 
    return replied(false)
 }
+
+
+func cmdKEYS(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
+    if len(args) != 2 {
+        writeError(conn, "ERR wrong number of arguments for 'keys' command")
+        return replied(false)
+    }
+
+    pattern := args[1]
+    if pattern != "*" {
+        // 只支持 KEYS *
+        writeArrayHeader(conn, 0)
+        return replied(false)
+    }
+
+    kv.RLock()
+    defer kv.RUnlock()
+
+    // 收集所有没过期的 key
+    keys := []string{}
+    for k, e := range kv.m {
+        if !e.expires.IsZero() && time.Now().After(e.expires) {
+            continue // 已过期，跳过
+        }
+        keys = append(keys, k)
+    }
+
+    // RESP 数组返回
+    writeArrayHeader(conn, len(keys))
+    for _, k := range keys {
+        writeBulkString(conn, k)
+    }
+
+    return replied(false) // KEYS 是读命令
+}
+

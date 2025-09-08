@@ -9,6 +9,7 @@ import (
 	"io" // For reading input from the client.
 	"flag" // For parsing command-line flags (like port number).
 	// "strconv" // For converting strings to integers (like port number).
+	"path/filepath" // For handling file paths (like RDB file path).
 )
 
 // Ensures gofmt doesn't remove the "net" and "os" imports in stage 1 (feel free to remove this!)
@@ -30,14 +31,20 @@ func main() {
 	replicaof := flag.String("replicaof", "", "host port of master")
     dir := flag.String("dir", "/tmp", "Directory to store RDB files")
     dbfilename := flag.String("dbfilename", "dump.rdb", "RDB file name")
-
-
 	flag.Parse()
+
+	// ⚠️ 保存到全局变量
+	configDir = *dir
+	configDBFilename = *dbfilename
+	// 拼接路径并加载
+	rdbPath := filepath.Join(configDir, configDBFilename)
+	loadRDB(rdbPath)
+
 
     // 保存到全局变量，方便 CONFIG 命令读取
     configDir = *dir
     configDBFilename = *dbfilename
-	
+
 	// 如果有传 --replicaof，就切换角色
 	// ./your_program.sh --port 6380 --replicaof "localhost 6379"
 	if *replicaof != "" {

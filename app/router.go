@@ -31,6 +31,7 @@ func init() {
 	"PSYNC": cmdPSYNC,
 	"WAIT": cmdWAIT,
 	"CONFIG": cmdCONFIG,
+	"KEYS": cmdKEYS,
 	}
 }
     
