@@ -32,6 +32,7 @@ func init() {
 	"WAIT": cmdWAIT,
 	"CONFIG": cmdCONFIG,
 	"KEYS": cmdKEYS,
+	"SUBSCRIBE" : cmdSUBSCRIBE,
 	}
 }
     

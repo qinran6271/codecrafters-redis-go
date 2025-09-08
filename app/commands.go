@@ -909,3 +909,21 @@ func cmdKEYS(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
     return replied(false) // KEYS 是读命令
 }
 
+
+func cmdSUBSCRIBE(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
+    // 只需要处理: SUBSCRIBE <channel>
+    if len(args) != 2 {
+        writeError(conn, "wrong number of arguments for 'subscribe' command")
+        return replied(false)
+    }
+    ch := args[1]
+
+    // 该阶段只会调用一次，所以计数恒为 1
+    // 返回 ["subscribe", "<channel>", 1]
+    writeArrayHeader(conn, 3)       // *3\r\n
+    writeBulkString(conn, "subscribe") // $9\r\nsubscribe\r\n
+    writeBulkString(conn, ch)          // $<len>\r\n<channel>\r\n
+    writeInteger(conn, 1)              // :1\r\n
+
+    return replied(false) // 不修改数据，也不需要 propagate
+}
