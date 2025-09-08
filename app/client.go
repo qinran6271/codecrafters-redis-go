@@ -4,13 +4,17 @@ import (
 	"net"
 )
 
+type pubsubState struct {
+	subs map[string]struct{} // 该客户端已订阅的唯一频道集合
+}
+
 // 每个客户端或者replica连接的上下文
 type ClientCtx struct {
 	tx *transactionState // 事务相关的状态
 	isReplica bool
 	offset int64 // 当前副本已经处理的字节数 只对 replica 自己有意义
 	// 后续可以扩展更多，比如：
-	// subscribedChannels []string
+	pubsub *pubsubState
 }
 
 // 保存所有客户端的上下文

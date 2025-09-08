@@ -911,19 +911,34 @@ func cmdKEYS(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
 
 
 func cmdSUBSCRIBE(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
-    // 只需要处理: SUBSCRIBE <channel>
-    if len(args) != 2 {
-        writeError(conn, "wrong number of arguments for 'subscribe' command")
-        return replied(false)
-    }
-    ch := args[1]
+	if len(args) < 2 {
+		writeError(conn, "wrong number of arguments for 'subscribe' command")
+		return replied(false)
+	}
+	// 惰性初始化
+	if ctx.pubsub == nil {
+		ctx.pubsub = &pubsubState{subs: make(map[string]struct{})}
+	}
 
-    // 该阶段只会调用一次，所以计数恒为 1
-    // 返回 ["subscribe", "<channel>", 1]
-    writeArrayHeader(conn, 3)       // *3\r\n
-    writeBulkString(conn, "subscribe") // $9\r\nsubscribe\r\n
-    writeBulkString(conn, ch)          // $<len>\r\n<channel>\r\n
-    writeInteger(conn, 1)              // :1\r\n
+	// 支持多个频道参数：SUBSCRIBE ch1 ch2 ...
+	for i := 1; i < len(args); i++ {
+		ch := args[i]
 
-    return replied(false) // 不修改数据，也不需要 propagate
+		// 判断是否是新订阅
+		if _, exists := ctx.pubsub.subs[ch]; !exists {
+			ctx.pubsub.subs[ch] = struct{}{}
+		}
+		// 计数 = 已订阅的唯一频道数
+		count := len(ctx.pubsub.subs)
+
+		// 对每个频道都要回一条 3 元素数组
+		writeArrayHeader(conn, 3)
+		writeBulkString(conn, "subscribe")
+		writeBulkString(conn, ch)
+		writeInteger(conn, int64(count))
+	}
+
+	// 不修改全局 DB，不需要 propagate
+	return replied(false)
 }
+
