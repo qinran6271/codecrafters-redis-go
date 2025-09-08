@@ -918,6 +918,8 @@ func cmdKEYS(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
 }
 
 
+// *********************** Pub/Sub ***********************
+
 func cmdSUBSCRIBE(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
 	if len(args) < 2 {
 		writeError(conn, "wrong number of arguments for 'subscribe' command")
@@ -932,10 +934,21 @@ func cmdSUBSCRIBE(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
 	for i := 1; i < len(args); i++ {
 		ch := args[i]
 
-		// 判断是否是新订阅
+		// 仅当真的“新订阅”时，才更新全局索引
 		if _, exists := ctx.pubsub.subs[ch]; !exists {
 			ctx.pubsub.subs[ch] = struct{}{}
+
+			subIndex.Lock()
+			set := subIndex.chans[ch]
+			if set == nil {
+				set = make(map[*ClientCtx]struct{})
+				subIndex.chans[ch] = set
+			}
+			set[ctx] = struct{}{}
+			subIndex.Unlock()
 		}
+
+
 		// 计数 = 已订阅的唯一频道数
 		count := len(ctx.pubsub.subs)
 
@@ -950,3 +963,23 @@ func cmdSUBSCRIBE(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
 	return replied(false)
 }
 
+
+func cmdPUBLISH(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
+	// 仅需检查参数；此阶段消息内容不用分发
+	if len(args) != 3 {
+		writeError(conn, "wrong number of arguments for 'publish' command")
+		return replied(false)
+	}
+	ch := args[1]
+	// msg := args[2] // 先不使用（后续阶段才真正投递）
+
+	subIndex.RLock()
+	count := 0
+	if set, ok := subIndex.chans[ch]; ok {
+		count = len(set)
+	}
+	subIndex.RUnlock()
+
+	writeInteger(conn, int64(count)) // (integer) <n>
+	return replied(false)
+}

@@ -33,6 +33,7 @@ func init() {
 	"CONFIG": cmdCONFIG,
 	"KEYS": cmdKEYS,
 	"SUBSCRIBE" : cmdSUBSCRIBE,
+	"PUBLISH" : cmdPUBLISH,
 	}
 }
     
