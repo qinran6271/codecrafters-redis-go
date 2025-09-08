@@ -33,7 +33,7 @@ func main() {
     dbfilename := flag.String("dbfilename", "dump.rdb", "RDB file name")
 	flag.Parse()
 
-	// ⚠️ 保存到全局变量
+	// 保存到全局变量
 	configDir = *dir
 	configDBFilename = *dbfilename
 	// 拼接路径并加载
@@ -100,6 +100,13 @@ func handleConnection(conn net.Conn) {
 		if handled := processReplicaCommand(conn, cmd, args, consumed, ctx); handled {
 			continue
 		}
+		
+        // ★ 在这里做“Subscribed mode”拦截
+        if inSubscribedMode(ctx) && !allowedInSubscribedMode(cmd) {
+            // 按测试要求，错误文案以 “ERR Can't execute '<command>' …” 开头即可（大小写不敏感）
+            writeError(conn, fmt.Sprintf("ERR Can't execute '%s' in subscribed mode", strings.ToLower(cmd)))
+            continue
+        }
 
 		// === 事务模式拦截 ===
 		if ctx.tx.inMulti && cmd != "EXEC" && cmd != "DISCARD" && cmd != "MULTI" {
