@@ -14,6 +14,14 @@ func replied(isWrite bool) CommandResult {
 }
 
 func cmdPING(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
+	    // 订阅模式下：按要求返回 ["pong", ""]
+    if inSubscribedMode(ctx) {
+        writeArrayHeader(conn, 2)       // *2\r\n
+        writeBulkString(conn, "pong")   // $4\r\npong\r\n
+        writeBulkString(conn, "")       // $0\r\n\r\n
+        return replied(false)
+    }
+
 	if len(args) == 1 {
 		writeSimple(conn, "PONG")
 	}else{
