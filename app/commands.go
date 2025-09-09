@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"log"
 )
 
 // **********************basic commands***********************
@@ -931,33 +932,32 @@ func cmdSUBSCRIBE(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
 	}
 
 	// 支持多个频道参数：SUBSCRIBE ch1 ch2 ...
-	for i := 1; i < len(args); i++ {
-		ch := args[i]
+   for i := 1; i < len(args); i++ {
+        ch := args[i]
 
-		// 仅当真的“新订阅”时，才更新全局索引
-		if _, exists := ctx.pubsub.subs[ch]; !exists {
-			ctx.pubsub.subs[ch] = struct{}{}
+        if _, exists := ctx.pubsub.subs[ch]; !exists {
+            ctx.pubsub.subs[ch] = struct{}{}
 
-			subIndex.Lock()
-			set := subIndex.chans[ch]
-			if set == nil {
-				set = make(map[*ClientCtx]struct{})
-				subIndex.chans[ch] = set
-			}
-			set[ctx] = struct{}{}
-			subIndex.Unlock()
-		}
+            // 加入频道→订阅者集合
+            subIndex.Lock()
+            set := subIndex.chans[ch]
+            if set == nil {
+                set = make(map[*ClientCtx]struct{})
+                subIndex.chans[ch] = set
+            }
+            set[ctx] = struct{}{}
+            subIndex.Unlock()
+        }
 
+        writeArrayHeader(conn, 3)
+        writeBulkString(conn, "subscribe")
+        writeBulkString(conn, ch)
+        writeInteger(conn, int64(len(ctx.pubsub.subs)))
+		log.Printf("SUB %s -> subIndex size = %d", ch, len(subIndex.chans[ch]))
+    }
 
-		// 计数 = 已订阅的唯一频道数
-		count := len(ctx.pubsub.subs)
+	
 
-		// 对每个频道都要回一条 3 元素数组
-		writeArrayHeader(conn, 3)
-		writeBulkString(conn, "subscribe")
-		writeBulkString(conn, ch)
-		writeInteger(conn, int64(count))
-	}
 
 	// 不修改全局 DB，不需要 propagate
 	return replied(false)
@@ -971,15 +971,10 @@ func cmdPUBLISH(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
 		return replied(false)
 	}
 	ch := args[1]
-	// msg := args[2] // 先不使用（后续阶段才真正投递）
+	msg := args[2] // 先不使用（后续阶段才真正投递）
 
-	subIndex.RLock()
-	count := 0
-	if set, ok := subIndex.chans[ch]; ok {
-		count = len(set)
-	}
-	subIndex.RUnlock()
+    n := deliverToSubscribers(ch, msg) // 先真正投递
+    writeInteger(conn, int64(n))       // 然后回订阅者数量
 
-	writeInteger(conn, int64(count)) // (integer) <n>
 	return replied(false)
 }

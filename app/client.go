@@ -2,8 +2,14 @@ package main
 
 import (
 	"net"
+	"sync"
 )
 
+// 每客户端 ：这个客户端订了哪些频道？
+// 按客户端看（pubsubState）          
+// Client A -> {foo, bar}            
+// Client B -> {bar}             
+// Client C -> {foo}   
 type pubsubState struct {
 	subs map[string]struct{} // 该客户端已订阅的唯一频道集合
 }
@@ -13,7 +19,8 @@ type ClientCtx struct {
 	tx *transactionState // 事务相关的状态
 	isReplica bool
 	offset int64 // 当前副本已经处理的字节数 只对 replica 自己有意义
-	// 后续可以扩展更多，比如：
+	conn    net.Conn     // 在 handleConnection 里赋值：ctx.conn = conn
+    writeMu sync.Mutex   // 保护对 conn 的写操作（多发布者并发推送时需要）
 	pubsub *pubsubState
 }
 

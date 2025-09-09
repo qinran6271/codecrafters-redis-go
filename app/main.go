@@ -73,7 +73,12 @@ func main() {
 }
 
 func handleConnection(conn net.Conn) {
+	// conn 表示一条跟客户端的 TCP 连接
+	// 服务器进程 ←→ 某一个客户端进程
 	defer conn.Close()
+	ctx := getClientCtx(conn)
+	ctx.conn = conn
+	defer cleanupSubscriptions(ctx)
 
 	// Read commands from the client
 	r := bufio.NewReader(conn)
@@ -94,13 +99,13 @@ func handleConnection(conn net.Conn) {
 		} 
 
 		cmd := strings.ToUpper(args[0])
-		ctx := getClientCtx(conn)
+		// ctx := getClientCtx(conn)
 
 		// ⚡ 把 replica 特殊处理抽到一个函数
 		if handled := processReplicaCommand(conn, cmd, args, consumed, ctx); handled {
 			continue
 		}
-		
+
         // ★ 在这里做“Subscribed mode”拦截
         if inSubscribedMode(ctx) && !allowedInSubscribedMode(cmd) {
             // 按测试要求，错误文案以 “ERR Can't execute '<command>' …” 开头即可（大小写不敏感）
@@ -136,5 +141,9 @@ func handleConnection(conn net.Conn) {
 		ctx.offset += int64(consumed)
 	}
 
+
+
 }
+
+
 
