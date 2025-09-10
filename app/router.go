@@ -34,6 +34,7 @@ func init() {
 	"KEYS": cmdKEYS,
 	"SUBSCRIBE" : cmdSUBSCRIBE,
 	"PUBLISH" : cmdPUBLISH,
+	"UNSUBSCRIBE" : cmdUNSUBSCRIBE,
 	}
 }
     

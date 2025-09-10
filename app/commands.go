@@ -978,3 +978,47 @@ func cmdPUBLISH(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
 
 	return replied(false)
 }
+
+func cmdUNSUBSCRIBE(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
+    // 无订阅状态也要能优雅返回
+    if ctx.pubsub == nil {
+        ctx.pubsub = &pubsubState{subs: make(map[string]struct{})}
+    }
+
+    if len(args) == 1 {
+        // 参数为空：取消当前客户端所有频道的订阅
+        chans := unsubscribeAll(ctx)
+        if len(chans) == 0 {
+            // 与 Redis 保持兼容：没有任何订阅时也回一条占位
+            writeArrayHeader(conn, 3)
+            writeBulkString(conn, "unsubscribe")
+            writeBulkString(conn, "")          // 空频道名
+            writeInteger(conn, int64(0))       // 剩余为 0
+            return replied(false)
+        }
+        // 按顺序逐条返回
+        for i, ch := range chans {
+            // 这里 remaining = len(ctx.pubsub.subs)，已经递减到当前值
+            writeArrayHeader(conn, 3)
+            writeBulkString(conn, "unsubscribe")
+            writeBulkString(conn, ch)
+            writeInteger(conn, int64(len(ctx.pubsub.subs)))
+            _ = i // 仅避免未使用告警
+        }
+        return replied(false)
+    }
+
+    // 有参数：逐个处理
+    for i := 1; i < len(args); i++ {
+        ch := args[i]
+        // 尝试取消；如果本来没订阅，则 remaining 不变
+        _, remaining := unsubscribeChannel(ctx, ch)
+
+        writeArrayHeader(conn, 3)
+        writeBulkString(conn, "unsubscribe")
+        writeBulkString(conn, ch)
+        writeInteger(conn, int64(remaining))
+    }
+    return replied(false)
+}
+

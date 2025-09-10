@@ -87,20 +87,41 @@ func cleanupSubscriptions(ctx *ClientCtx) {
     // ctx.pubsub.subs = nil
 }
 
-// 取消订阅所有频道（可用于 QUIT 或 RESET）
-// func unsubscribeAll(ctx *ClientCtx) {
-//     if ctx == nil || ctx.pubsub == nil {
-//         return
-//     }
-//     subIndex.Lock()
-//     for ch := range ctx.pubsub.subs {
-//         if set, ok := subIndex.chans[ch]; ok {
-//             delete(set, ctx)
-//             if len(set) == 0 {
-//                 delete(subIndex.chans, ch)
-//             }
-//         }
-//     }
-//     subIndex.Unlock()
-//     // 可选：ctx.pubsub.subs = make(map[string]struct{}) 或置 nil
-// }
+// 取消订阅单个频道（如本来没订，则什么都不做）
+func unsubscribeChannel(ctx *ClientCtx, ch string) (wasSub bool, remaining int) {
+    if ctx == nil || ctx.pubsub == nil {
+        return false, 0
+    }
+    if _, ok := ctx.pubsub.subs[ch]; ok {
+        delete(ctx.pubsub.subs, ch)
+        // 同步更新全局索引
+        subIndex.Lock()
+        if set, ok2 := subIndex.chans[ch]; ok2 {
+            delete(set, ctx)
+            if len(set) == 0 {
+                delete(subIndex.chans, ch)
+            }
+        }
+        subIndex.Unlock()
+        wasSub = true
+    }
+    return wasSub, len(ctx.pubsub.subs)
+}
+
+// 取消订阅全部频道：返回按“逐条取消”的顺序列表（频道名切片）
+func unsubscribeAll(ctx *ClientCtx) []string {
+    if ctx == nil || ctx.pubsub == nil || len(ctx.pubsub.subs) == 0 {
+        return nil
+    }
+    // 先收集一份快照，避免边遍历边删 map
+    channels := make([]string, 0, len(ctx.pubsub.subs))
+    for ch := range ctx.pubsub.subs {
+        channels = append(channels, ch)
+    }
+    // 逐个删除（会同步 subIndex）
+    for _, ch := range channels {
+        unsubscribeChannel(ctx, ch)
+    }
+    return channels
+}
+
