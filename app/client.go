@@ -25,14 +25,35 @@ type ClientCtx struct {
 }
 
 // 保存所有客户端的上下文
-var clients = make(map[net.Conn]*ClientCtx)
+var (
+    clientsMu sync.RWMutex
+    clients   = make(map[net.Conn]*ClientCtx)
+)
 
-// 获取或创建某个连接的上下文
 func getClientCtx(conn net.Conn) *ClientCtx {
-	if ctx, ok := clients[conn]; ok {
-		return ctx
-	}
-	ctx := &ClientCtx{tx: &transactionState{}}
-	clients[conn] = ctx
-	return ctx
+    clientsMu.RLock()
+    if ctx, ok := clients[conn]; ok {
+        clientsMu.RUnlock()
+        return ctx
+    }
+    clientsMu.RUnlock()
+
+    clientsMu.Lock()
+    ctx, ok := clients[conn]
+    if !ok {
+        ctx = &ClientCtx{
+            tx:     &transactionState{},                 // ✅ 初始化
+            pubsub: &pubsubState{subs: make(map[string]struct{})}, // ✅ 初始化
+        }
+        clients[conn] = ctx
+    }
+    clientsMu.Unlock()
+    return ctx
+}
+
+
+func releaseClientCtx(conn net.Conn) {
+    clientsMu.Lock()
+    delete(clients, conn)
+    clientsMu.Unlock()
 }

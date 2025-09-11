@@ -75,8 +75,16 @@ func main() {
 func handleConnection(conn net.Conn) {
 	// conn 表示一条跟客户端的 TCP 连接
 	// 服务器进程 ←→ 某一个客户端进程
-	defer conn.Close()
+    defer func() {
+        releaseClientCtx(conn)
+        conn.Close()
+    }()
 	ctx := getClientCtx(conn)
+	if ctx == nil {
+    // 极端防御，避免空指针
+    ctx = &ClientCtx{}
+    // 也可考虑放回 clients 映射里，视你的设计而定
+}
 	ctx.conn = conn
 	defer cleanupSubscriptions(ctx)
 
