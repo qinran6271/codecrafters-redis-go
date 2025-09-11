@@ -1045,14 +1045,18 @@ func cmdZADD(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
     zs, _, err := getZSetForZAdd(key)
     if err != nil {
         writeError(conn, err.Error())
-        return replied(true)
+        return replied(false)
     }
 
     // 写入逻辑：新成员 => 返回 1；已存在仅更新分数 => 返回 0
     added := 0
-    if _, ok := zs.m[member]; !ok {
+    kv.RLock()
+    _, existed := zs.m[member]
+    kv.RUnlock()
+    if !existed {
         added = 1
     }
+
     // 更新分数（存在则覆盖，不计数）
     // 注意：这里需要写锁，因为 getZSetForZAdd 可能在创建时拿过一次锁
     // 为了简单，做一次独立的写锁更新
