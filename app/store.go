@@ -8,6 +8,7 @@ import (
 	"strings"
 	"strconv"
 	"math"
+	"fmt"
 )
 
 var ErrWrongType = errors.New("WRONGTYPE of value for this operation")
@@ -318,3 +319,51 @@ func parseStreamIDForRange(id string, isStart bool) (int64, int64) {
     }
     return ms, seq
 }
+
+
+
+func getOrCreateZSet(key string) (*zset, bool, error) {
+    kv.Lock()
+    defer kv.Unlock()
+
+    e, ok := kv.m[key]
+    if !ok {
+        zs := &zset{m: make(map[string]float64)}
+        kv.m[key] = entry{kind: kindZSet, z: zs}
+        return zs, true, nil
+    }
+    if e.kind != kindZSet {
+        return nil, false, fmt.Errorf("WRONGTYPE Operation against a key holding the wrong kind of value")
+    }
+    return e.z, false, nil
+}
+
+func getZSetIfExists(key string) (*zset, bool, error) {
+    kv.RLock()
+    defer kv.RUnlock()
+
+    e, ok := kv.m[key]
+    if !ok {
+        return nil, false, nil
+    }
+    if e.kind != kindZSet {
+        return nil, false, fmt.Errorf("WRONGTYPE Operation against a key holding the wrong kind of value")
+    }
+    return e.z, true, nil
+}
+
+// 小工具：统一拿到可写 zset
+func getZSetForZAdd(key string) (*zset, bool, error) {
+    // 如果存在且类型正确就直接返回；不存在就创建
+    zs, ok, err := getZSetIfExists(key)
+    if err != nil {
+        return nil, false, err
+    }
+    if ok {
+        return zs, true, nil
+    }
+    // 不存在 -> 创建
+    zs, _, err = getOrCreateZSet(key)
+    return zs, false, err
+}
+

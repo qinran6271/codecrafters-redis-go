@@ -19,6 +19,8 @@ import (
 // │      }
 // │
 // └── RWMutex (保证多 goroutine 并发安全)
+
+
 // 命令执行结果
 type CommandResult struct {
 	IsWrite bool // 是否修改了数据（master需要propagate）
@@ -31,6 +33,7 @@ const (
 	kindString valueKind = iota // index 0, string type, iota starts at 0 and increments by 1
 	kindList // index 1, list type
 	kindStream // index 2, stream type
+	kindZSet // index 3, sorted set type (not implemented yet
 )
 
 type streamEntry struct {
@@ -40,12 +43,17 @@ type streamEntry struct {
 	fields map[string]string // Fields of the stream entry, key-value pairs
 }
 
+type zset struct {
+    m map[string]float64
+}
+
 type entry struct {
 	kind valueKind // Type of the value
 	s string // string value (GET/SET)
 	l []string // list value (LPUSH/RPUSH)
 	streams []streamEntry // stream value (XADD/XREAD)
 	expires time.Time // Expiration time for the entry, zero if no expiration
+	z *zset 
 }
 
 // 最外层的全局变量，表示整个 KV 存储

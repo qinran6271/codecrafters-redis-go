@@ -1022,3 +1022,46 @@ func cmdUNSUBSCRIBE(conn net.Conn, args []string, ctx *ClientCtx) CommandResult 
     return replied(false)
 }
 
+
+// ************************ Zset ***********************
+
+func cmdZADD(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
+    // 期望: ZADD key score member
+    if len(args) != 4 {
+        writeError(conn, "wrong number of arguments for 'zadd' command")
+         return replied(false)
+    }
+    key := args[1]
+    scoreStr := args[2]
+    member := args[3]
+
+    score, err := strconv.ParseFloat(scoreStr, 64)
+    if err != nil {
+        writeError(conn, "value is not a valid float")
+         return replied(false)
+    }
+
+    // 如果 key 不存在，需要创建；如果存在且不是 zset -> WRONGTYPE
+    zs, _, err := getZSetForZAdd(key)
+    if err != nil {
+        writeError(conn, err.Error())
+        return replied(true)
+    }
+
+    // 写入逻辑：新成员 => 返回 1；已存在仅更新分数 => 返回 0
+    added := 0
+    if _, ok := zs.m[member]; !ok {
+        added = 1
+    }
+    // 更新分数（存在则覆盖，不计数）
+    // 注意：这里需要写锁，因为 getZSetForZAdd 可能在创建时拿过一次锁
+    // 为了简单，做一次独立的写锁更新
+    kv.Lock()
+    // 这里如果是刚创建的 zset，kv 已经插入；如果是已有 zset，entry 已存在
+    zs.m[member] = score
+    kv.Unlock()
+
+    // RESP Integer
+    writeInteger(conn, int64(added))
+    return replied(true)
+}
