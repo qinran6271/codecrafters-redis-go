@@ -1069,3 +1069,47 @@ func cmdZADD(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
     writeInteger(conn, int64(added))
     return replied(true)
 }
+
+
+// commands_zset.go
+func cmdZRANK(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
+    // 语法：ZRANK key member
+    if len(args) != 3 {
+        writeError(conn, "wrong number of arguments for 'zrank' command")
+        return replied(false)
+    }
+    key := args[1]
+    member := args[2]
+
+    // 取 zset（存在但类型不对 -> WRONGTYPE）
+    zs, ok, err := getZSetIfExists(key)
+    if err != nil {
+        writeError(conn, err.Error()) // WRONGTYPE Operation against a key holding the wrong kind of value
+        return replied(false)
+    }
+    if !ok {
+        writeNullBulk(conn) // $-1
+        return replied(false)
+    }
+
+    // 为了避免并发读写 map，整个计算过程加读锁
+    kv.RLock()
+    score, exists := zs.m[member]
+    if !exists {
+        kv.RUnlock()
+        writeNullBulk(conn) // 成员不存在 -> $-1
+        return replied(false)
+    }
+
+    // 计算 rank：分数小的在前；分数相等则按字典序
+    rank := 0
+    for name, s := range zs.m {
+        if s < score || (s == score && name < member) {
+            rank++
+        }
+    }
+    kv.RUnlock()
+
+    writeInteger(conn, int64(rank)) // RESP Integer
+    return replied(false)
+}

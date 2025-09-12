@@ -36,6 +36,7 @@ func init() {
 	"PUBLISH" : cmdPUBLISH,
 	"UNSUBSCRIBE" : cmdUNSUBSCRIBE,
 	"ZADD": cmdZADD,
+	"ZRANK": cmdZRANK,
 	}
 }
     
