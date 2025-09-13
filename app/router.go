@@ -39,6 +39,7 @@ func init() {
 	"ZRANK": cmdZRANK,
 	"ZRANGE": cmdZRANGE,
 	"ZCARD": cmdZCARD,
+	"ZSCORE": cmdZSCORE,
 	}
 }
     

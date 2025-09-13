@@ -1218,3 +1218,38 @@ func cmdZCARD(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
     writeInteger(conn, int64(n))
     return replied(false)
 }
+
+func cmdZSCORE(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
+    // 语法：ZSCORE key member
+    if len(args) != 3 {
+        writeError(conn, "wrong number of arguments for 'zscore' command")
+        return replied(false) // 读命令，已回复
+    }
+    key := args[1]
+    member := args[2]
+
+    // 取到 zset；类型不对 -> WRONGTYPE
+    zs, ok, err := getZSetIfExists(key)
+    if err != nil {
+        writeError(conn, err.Error())
+        return replied(false)
+    }
+    if !ok {
+        writeNullBulk(conn) // $-1
+        return replied(false)
+    }
+
+    // 并发安全读取
+    kv.RLock()
+    score, exists := zs.m[member]
+    kv.RUnlock()
+    if !exists {
+        writeNullBulk(conn) // $-1
+        return replied(false)
+    }
+
+    // 分数转字符串（与示例格式匹配）
+    s := strconv.FormatFloat(score, 'f', -1, 64)
+    writeBulkString(conn, s)
+    return replied(false)
+}
