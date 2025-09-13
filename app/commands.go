@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 	"log"
+	"sort"
 )
 
 // **********************basic commands***********************
@@ -1113,3 +1114,74 @@ func cmdZRANK(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
     writeInteger(conn, int64(rank)) // RESP Integer
     return replied(false)
 }
+
+// commands_zset.go
+func cmdZRANGE(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
+    // 语法：ZRANGE key start stop
+    if len(args) != 4 {
+        writeError(conn, "wrong number of arguments for 'zrange' command")
+        return replied(false)
+    }
+    key := args[1]
+
+    start64, err1 := strconv.ParseInt(args[2], 10, 64)
+    stop64,  err2 := strconv.ParseInt(args[3],  10, 64)
+    if err1 != nil || err2 != nil {
+        writeError(conn, "ERR value is not an integer or out of range")
+        return replied(false)
+    }
+    // 只处理非负索引；负数按 0 起算（也可以直接判空返回 *0）
+    if start64 < 0 { start64 = 0 }
+    if stop64  < 0 { 
+        writeArrayHeader(conn, 0)
+        return replied(false)
+    }
+    start, stop := int(start64), int(stop64)
+
+    // 取到 zset（类型校验）
+    zs, ok, err := getZSetIfExists(key)
+    if err != nil {
+        writeError(conn, err.Error()) // WRONGTYPE
+        return replied(false)
+    }
+    if !ok {
+        writeArrayHeader(conn, 0) // 集合不存在 -> *0
+        return replied(false)
+    }
+
+    // 快照+排序：读锁保护 map 遍历，排序在锁外执行
+    type zitem struct {
+        name  string
+        score float64
+    }
+    kv.RLock()
+    items := make([]zitem, 0, len(zs.m))
+    for m, s := range zs.m {
+        items = append(items, zitem{name: m, score: s})
+    }
+    kv.RUnlock()
+
+    sort.Slice(items, func(i, j int) bool {
+        if items[i].score == items[j].score {
+            return items[i].name < items[j].name // 同分按字典序
+        }
+        return items[i].score < items[j].score
+    })
+
+    n := len(items)
+    if start >= n || start > stop {
+        writeArrayHeader(conn, 0)
+        return replied(false)
+    }
+    if stop >= n {
+        stop = n - 1 // 超界截到最后一个
+    }
+
+    // 输出成员名（不含分数）
+    writeArrayHeader(conn, stop-start+1)
+    for i := start; i <= stop; i++ {
+        writeBulkString(conn, items[i].name)
+    }
+    return replied(false)
+}
+
