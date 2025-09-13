@@ -1117,31 +1117,22 @@ func cmdZRANK(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
 
 // commands_zset.go
 func cmdZRANGE(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
-    // 语法：ZRANGE key start stop
     if len(args) != 4 {
         writeError(conn, "wrong number of arguments for 'zrange' command")
-        return replied(false)
+        return replied(false) // 读命令，已回复
     }
     key := args[1]
 
     start64, err1 := strconv.ParseInt(args[2], 10, 64)
-    stop64,  err2 := strconv.ParseInt(args[3],  10, 64)
+    stop64,  err2 := strconv.ParseInt(args[3], 10, 64)
     if err1 != nil || err2 != nil {
         writeError(conn, "ERR value is not an integer or out of range")
         return replied(false)
     }
-    // 只处理非负索引；负数按 0 起算（也可以直接判空返回 *0）
-    if start64 < 0 { start64 = 0 }
-    if stop64  < 0 { 
-        writeArrayHeader(conn, 0)
-        return replied(false)
-    }
-    start, stop := int(start64), int(stop64)
 
-    // 取到 zset（类型校验）
     zs, ok, err := getZSetIfExists(key)
-    if err != nil {
-        writeError(conn, err.Error()) // WRONGTYPE
+    if err != nil { // WRONGTYPE
+        writeError(conn, err.Error())
         return replied(false)
     }
     if !ok {
@@ -1149,11 +1140,8 @@ func cmdZRANGE(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
         return replied(false)
     }
 
-    // 快照+排序：读锁保护 map 遍历，排序在锁外执行
-    type zitem struct {
-        name  string
-        score float64
-    }
+    // 快照 + 排序
+    type zitem struct{ name string; score float64 }
     kv.RLock()
     items := make([]zitem, 0, len(zs.m))
     for m, s := range zs.m {
@@ -1169,19 +1157,37 @@ func cmdZRANGE(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
     })
 
     n := len(items)
-    if start >= n || start > stop {
+    if n == 0 {
         writeArrayHeader(conn, 0)
         return replied(false)
     }
-    if stop >= n {
-        stop = n - 1 // 超界截到最后一个
+
+    // === 负索引归一化（stop 为闭区间） ===
+    start := int(start64)
+    stop  := int(stop64)
+
+    if start < 0 { start = n + start } // -1 -> n-1, -2 -> n-2 ...
+    if stop  < 0 { stop  = n + stop  }
+
+    if start < 0 { start = 0 }         // 负超界 -> 0
+    if stop  < 0 { stop  = 0 }
+
+    // 正超界：start 超界 => 空；stop 超界 => 截到末尾
+    if start >= n {
+        writeArrayHeader(conn, 0)
+        return replied(false)
+    }
+    if stop >= n { stop = n - 1 }
+
+    if start > stop {
+        writeArrayHeader(conn, 0)
+        return replied(false)
     }
 
-    // 输出成员名（不含分数）
+    // 输出成员名
     writeArrayHeader(conn, stop-start+1)
     for i := start; i <= stop; i++ {
         writeBulkString(conn, items[i].name)
     }
-    return replied(false)
+    return replied(false) // <- 确保等价于 {IsWrite:false, Replied:true}
 }
-
