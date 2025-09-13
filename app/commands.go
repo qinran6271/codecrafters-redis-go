@@ -1191,3 +1191,30 @@ func cmdZRANGE(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
     }
     return replied(false) // <- 确保等价于 {IsWrite:false, Replied:true}
 }
+
+func cmdZCARD(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
+    if len(args) != 2 {
+        writeError(conn, "wrong number of arguments for 'zcard' command")
+        return replied(false) // 读命令，已回复
+    }
+    key := args[1]
+
+    // 拿到 zset；类型不对 -> WRONGTYPE
+    zs, ok, err := getZSetIfExists(key)
+    if err != nil {
+        writeError(conn, err.Error())
+        return replied(false)
+    }
+    if !ok {
+        writeInteger(conn, 0) // 不存在 -> 0
+        return replied(false)
+    }
+
+    // 并发安全地读长度
+    kv.RLock()
+    n := len(zs.m)
+    kv.RUnlock()
+
+    writeInteger(conn, int64(n))
+    return replied(false)
+}
