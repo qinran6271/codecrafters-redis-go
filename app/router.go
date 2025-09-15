@@ -40,6 +40,7 @@ func init() {
 	"ZRANGE": cmdZRANGE,
 	"ZCARD": cmdZCARD,
 	"ZSCORE": cmdZSCORE,
+	"ZREM": cmdZREM,
 	}
 }
     

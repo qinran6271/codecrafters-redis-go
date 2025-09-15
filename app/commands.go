@@ -1253,3 +1253,40 @@ func cmdZSCORE(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
     writeBulkString(conn, s)
     return replied(false)
 }
+
+func cmdZREM(conn net.Conn, args []string, ctx *ClientCtx) CommandResult {
+    // 语法：ZREM key member   （本关只实现单成员）
+    if len(args) != 3 {
+        writeError(conn, "wrong number of arguments for 'zrem' command")
+        return replied(false)
+    }
+    key := args[1]
+    member := args[2]
+
+    // 拿到 zset（类型不对 -> WRONGTYPE；不存在 -> 0）
+    zs, ok, err := getZSetIfExists(key)
+    if err != nil {
+        writeError(conn, err.Error())
+        return replied(false)
+    }
+    if !ok {
+        writeInteger(conn, 0)
+        return replied(false)
+    }
+
+    // 一次写锁包住“存在判断 + 删除 + 可能的 key 清理”
+    removed := 0
+    kv.Lock()
+    if _, exists := zs.m[member]; exists {
+        delete(zs.m, member)
+        removed = 1
+        // 可选：与 Redis 行为一致，集合空了就删除 key
+        if len(zs.m) == 0 {
+            delete(kv.m, key)
+        }
+    }
+    kv.Unlock()
+
+    writeInteger(conn, int64(removed))
+   return replied(true)
+}
